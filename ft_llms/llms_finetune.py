@@ -1,4 +1,6 @@
 import argparse
+
+import datasets
 from trl import SFTTrainer
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, TrainingArguments, AutoConfig
 from datasets import Dataset
@@ -20,6 +22,8 @@ logger = get_logger("finetune", "info")
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--model_name", type=str, default="meta-llama/Llama-2-7b-hf")
+    parser.add_argument("-d", "--dataset_name", type=str, default="wikitext-2-raw-v1")
+    parser.add_argument("-dc", "--dataset_config_name", type=str, default=None, help="The configuration name of the dataset to use (via the datasets library).")
     parser.add_argument("-t", "--token", type=str, default=None)
     parser.add_argument("--split_model", action="store_true", default=False)
     parser.add_argument("--block_size", type=int, default=128)
@@ -41,8 +45,6 @@ if __name__ == "__main__":
     parser.add_argument("--gradient_checkpointing", action="store_true", default=False)
     parser.add_argument("--trust_remote_code", action="store_true", default=False)
 
-    parser.add_argument("-tf", "--train_file", type=str, required=True)
-    parser.add_argument("-vf", "--validation_file", type=str, required=True)
     parser.add_argument("-s", "--save_limit", type=int, default=1)
 
     parser.add_argument("--use_int4", action="store_true", default=False)
@@ -53,10 +55,8 @@ if __name__ == "__main__":
     parser.add_argument("--pad_token_id", default=None, type=int, help="The end of sequence token.")
     parser.add_argument("--add_eos_token", action="store_true", help="Add EOS token to tokenizer", default=False)
     parser.add_argument("--add_bos_token", action="store_true", help="Add BOS token to tokenizer", default=False)
-
-    parser.add_argument("--train_dataset_ratio", default=1.0, type=float, help="Ratio of the training dataset to use")
-    parser.add_argument("--validation_dataset_ratio", default=1.0, type=float,
-                        help="Ratio of the validation dataset to use")
+    parser.add_argument("--validation_split_percentage", default=5,
+                        help="The percentage of the train set used as validation set in case there's no validation split")
     args = parser.parse_args()
 
     if args.token is None:
@@ -192,14 +192,22 @@ if __name__ == "__main__":
         fp16=False if torch.cuda.is_bf16_supported() else True,
     )
 
-    train_df = pd.read_csv(args.train_file)
-    if args.train_dataset_ratio < 1.0:
-        train_df = train_df.sample(frac=args.train_dataset_ratio)
-    train_dataset = Dataset.from_pandas(train_df)
-    validation_df = pd.read_csv(args.validation_file)
-    if args.validation_dataset_ratio < 1.0:
-        validation_df = validation_df.sample(frac=args.validation_dataset_ratio)
-    validation_dataset = Dataset.from_pandas(validation_df)
+
+    raw_datasets = datasets.load_dataset(args.dataset_name, args.dataset_config_name)
+    if "validation" in raw_datasets.keys():
+        train_dataset = raw_datasets["train"]
+        validation_dataset = raw_datasets["validation"]
+    else:
+        train_dataset = datasets.load_dataset(
+            args.dataset_name,
+            args.dataset_config_name,
+            split=f"train[:{args.validation_split_percentage}%]"
+        )
+        validation_dataset = datasets.load_dataset(
+            args.dataset_name,
+            args.dataset_config_name,
+            split=f"train[{args.validation_split_percentage}%:]",
+        )
 
     # get trainer
     trainer = SFTTrainer(
