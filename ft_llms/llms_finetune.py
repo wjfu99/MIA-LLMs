@@ -218,6 +218,7 @@ if __name__ == "__main__":
         dataset_text_field="text",
         max_seq_length=block_size,
         tokenizer=tokenizer,
+        packing=True
     )
 
     # train
