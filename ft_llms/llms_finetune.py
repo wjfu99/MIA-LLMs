@@ -1,8 +1,10 @@
 import argparse
 
 import datasets
+import trl
 from trl import SFTTrainer
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, TrainingArguments, AutoConfig
+from accelerate import Accelerator
 from datasets import Dataset
 import torch
 import logging
@@ -164,6 +166,33 @@ if __name__ == "__main__":
     else:
         logger.info("Using Full Finetuning")
 
+    raw_datasets = datasets.load_dataset(args.dataset_name, args.dataset_config_name)
+    if "validation" in raw_datasets.keys():
+        train_dataset = raw_datasets["train"]
+        validation_dataset = raw_datasets["validation"]
+    else:
+        train_dataset = datasets.load_dataset(
+            args.dataset_name,
+            args.dataset_config_name,
+            split=f"train[:{args.validation_split_percentage}%]"
+        )
+        validation_dataset = datasets.load_dataset(
+            args.dataset_name,
+            args.dataset_config_name,
+            split=f"train[{args.validation_split_percentage}%:]",
+        )
+    _train_dataset = trl.trainer.ConstantLengthDataset(
+        tokenizer,
+        train_dataset,
+        dataset_text_field="text",
+        seq_length=1024,
+        shuffle=False
+    )
+    dataset_len = 0
+    for _ in _train_dataset:
+        dataset_len += 1
+    logger.info(f"Training with {Accelerator().num_processes} GPUs")
+    logger.info(f"The total training steps is set to {int(args.epochs * dataset_len / args.gradient_accumulation_steps / Accelerator().num_processes)}")
     training_args = TrainingArguments(
         do_train=True,
         do_eval=True,
@@ -173,6 +202,7 @@ if __name__ == "__main__":
         save_strategy="steps",
         logging_strategy="steps",
         num_train_epochs=args.epochs,
+        max_steps=int(args.epochs * dataset_len / args.gradient_accumulation_steps / Accelerator().num_processes),
         eval_steps=args.eval_steps,
         save_steps=args.save_steps,
         logging_steps=args.log_steps,
@@ -193,23 +223,6 @@ if __name__ == "__main__":
         fp16=False if torch.cuda.is_bf16_supported() else True,
     )
 
-
-    raw_datasets = datasets.load_dataset(args.dataset_name, args.dataset_config_name)
-    if "validation" in raw_datasets.keys():
-        train_dataset = raw_datasets["train"]
-        validation_dataset = raw_datasets["validation"]
-    else:
-        train_dataset = datasets.load_dataset(
-            args.dataset_name,
-            args.dataset_config_name,
-            split=f"train[:{args.validation_split_percentage}%]"
-        )
-        validation_dataset = datasets.load_dataset(
-            args.dataset_name,
-            args.dataset_config_name,
-            split=f"train[{args.validation_split_percentage}%:]",
-        )
-
     # get trainer
     trainer = SFTTrainer(
         model=model,
@@ -223,4 +236,4 @@ if __name__ == "__main__":
     )
 
     # train
-    trainer.train()
+    trainer.train(resume_from_checkpoint=True)
