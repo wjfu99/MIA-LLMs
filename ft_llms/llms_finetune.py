@@ -185,6 +185,7 @@ if __name__ == "__main__":
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         gradient_checkpointing=args.gradient_checkpointing,
         weight_decay=args.weight_decay,
+        adam_epsilon=1e-6,
         report_to="wandb",
         load_best_model_at_end=True,
         save_total_limit=args.save_limit,
