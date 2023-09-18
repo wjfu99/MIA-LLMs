@@ -1,8 +1,14 @@
 tensorboard: True
 random_seed: 42
 
-target_model: vae # valid model: diffusion, vae
-dataset: celeba # valid dataset: celeba, tinyin
+model_name: gpt2
+target_model: ./ft_llms/checkpoints/checkpoint-2900 # valid model:
+reference_model: #
+dataset_name: wikitext # valid dataset:
+dataset_config_name: wikitext-2-raw-v1
+add_eos_token: false
+add_bos_token: false
+pad_token_id: null
 attack_kind: stat # valid attacks: nn, stat
 loss_kind: ddpm # valid loss estimation methods: ddpm, ddim
 time_step: 10
