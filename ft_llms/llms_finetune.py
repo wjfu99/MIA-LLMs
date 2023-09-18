@@ -17,7 +17,9 @@ import os
 os.environ['HTTP_PROXY'] = 'http://115.156.158.36:7890'
 os.environ['HTTPS_PROXY'] = 'http://115.156.158.36:7890'
 
-from utils import get_logger
+from utils import get_logger, ConstantLengthDataset, constantlengthdatasetiter
+# trl.trainer.ConstantLengthDataset.__dict__["__iter__"] = constantlengthdatasetiter
+setattr(trl.trainer.ConstantLengthDataset, "__iter__", constantlengthdatasetiter)
 
 logger = get_logger("finetune", "info")
 
@@ -47,7 +49,7 @@ if __name__ == "__main__":
     parser.add_argument("--gradient_checkpointing", action="store_true", default=False)
     parser.add_argument("--trust_remote_code", action="store_true", default=False)
 
-    parser.add_argument("-s", "--save_limit", type=int, default=1)
+    parser.add_argument("-s", "--save_limit", type=int, default=None)
 
     parser.add_argument("--use_int4", action="store_true", default=False)
     parser.add_argument("--use_int8", action="store_true", default=False)
@@ -236,4 +238,4 @@ if __name__ == "__main__":
     )
 
     # train
-    trainer.train(resume_from_checkpoint=True)
+    trainer.train()
