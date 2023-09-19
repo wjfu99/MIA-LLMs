@@ -13,6 +13,7 @@ from attack.utils import get_logger
 import datasets
 from datasets import Image, Dataset
 from accelerate import Accelerator
+from accelerate.logging import get_logger
 import trl
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, TrainingArguments, AutoConfig
 
@@ -24,17 +25,23 @@ with open("configs/config.yaml", 'r') as f:
     cfg = yaml.safe_load(f)
 
 # Add Logger
-logger = get_logger("finetune", "info")
+accelerator = Accelerator()
+logger = get_logger(__name__, "INFO")
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+    datefmt="%m/%d/%Y %H:%M:%S",
+    level=logging.INFO,
+    )
 
 # Load abs path
 PATH = os.path.dirname(os.path.abspath(__file__))
 
 # Automatically select the freest GPU.
-os.system('nvidia-smi -q -d Memory |grep -A5 GPU|grep Free >tmp')
-memory_available = [int(x.split()[2]) for x in open('tmp', 'r').readlines()]
-os.environ["CUDA_VISIBLE_DEVICES"] = str(np.argmax(memory_available))
-device = "cuda" + ":" + str(np.argmax(memory_available))
-torch.cuda.set_device(device)
+# os.system('nvidia-smi -q -d Memory |grep -A5 GPU|grep Free >tmp')
+# memory_available = [int(x.split()[2]) for x in open('tmp', 'r').readlines()]
+# os.environ["CUDA_VISIBLE_DEVICES"] = str(np.argmax(memory_available))
+# device = "cuda" + ":" + str(np.argmax(memory_available))
+# torch.cuda.set_device(device)
 
 # Fix the random seed
 seed = 0
@@ -91,6 +98,7 @@ else:
     )
 logger.info("Successfully load datasets!")
 
+# Prepare dataloader
 train_dataset = trl.trainer.ConstantLengthDataset(
     tokenizer,
     train_dataset,
@@ -110,11 +118,11 @@ validation_dataset = trl.trainer.ConstantLengthDataset(
 train_dataloader = DataLoader(train_dataset)
 eval_dataloader = DataLoader(validation_dataset)
 
-accelerator = Accelerator()
-target_model, reference_model, train_dataloader, eval_dataloader = accelerator.prepare(target_model, reference_model, train_dataloader, eval_dataloader)
-# for step, batch in enumerate(train_dataloader):
-#     outputs = target_model(**batch)
-#     loss = outputs.loss
+# Prepare everything with accelerator
+target_model, reference_model, train_dataloader, eval_dataloader = accelerator.prepare(
+    target_model, reference_model, train_dataloader, eval_dataloader
+)
+
 
 losses = []
 losses_ref = []

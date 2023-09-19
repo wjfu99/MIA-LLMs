@@ -2,7 +2,7 @@ tensorboard: True
 random_seed: 42
 
 model_name: gpt2
-target_model: ./ft_llms/checkpoints/checkpoint-300 # valid model:
+target_model: ./ft_llms/checkpoints/checkpoint-200 # valid model:
 reference_model: #
 dataset_name: wikitext # valid dataset:
 dataset_config_name: wikitext-2-raw-v1
