@@ -6,10 +6,9 @@ from torch.utils.data import DataLoader
 import logging
 import random
 
-# from attack.attack_model import AttackModel
+from attack.attack_model import AttackModel
 
 import yaml
-from attack.utils import get_logger
 import datasets
 from datasets import Image, Dataset
 from accelerate import Accelerator
@@ -63,8 +62,7 @@ target_model = AutoModelForCausalLM.from_pretrained(cfg["target_model"], quantiz
 reference_model = AutoModelForCausalLM.from_pretrained(cfg["model_name"], quantization_config=bnb_config,
                                                        torch_dtype=torch_dtype,
                                                        config=config)
-# shadow_path = os.path.join(PATH, 'diffusion_models/ddpm-celeba-64-50k-shadow/checkpoint-247500')
-# shadow_model = DiffusionPipeline.from_pretrained(shadow_path).to(device)
+shadow_model = None
 logger.info("Successfully load models")
 
 # Load tokenizer.
@@ -123,7 +121,7 @@ target_model, reference_model, train_dataloader, eval_dataloader = accelerator.p
     target_model, reference_model, train_dataloader, eval_dataloader
 )
 
-
+"""
 losses = []
 losses_ref = []
 for step, batch in tqdm(enumerate(eval_dataloader)):
@@ -162,22 +160,23 @@ losses_ref = torch.cat(losses_ref, dim=0)
 lr_rat = [l - l_r for l, l_r in zip(losses, losses_ref)]
 guess_cor_ref = sum([1 for sample in lr_rat if sample < threshold_ref])
 print("correct cnt  ref is: ", guess_cor_ref, "all is: ", len(losses), "ratio is: ", guess_cor_ref/len(losses))
-# datasets = {
-#     "target": {
-#         "train": Dataset.from_dict(all_dataset[random.sample(range(0, 30000), cfg["sample_number"])]),
-#         "valid": Dataset.from_dict(all_dataset[random.sample(range(30000, 35000), cfg["sample_number"])])
-#     },
-#     "shadow": {
-#         "train": Dataset.from_dict(all_dataset[random.sample(range(35000, 65000), cfg["sample_number"])]),
-#         "valid": Dataset.from_dict(all_dataset[random.sample(range(65000, 70000), cfg["sample_number"])])
-#     },
-#     "reference": {
-#         "train": Dataset.from_dict(all_dataset[random.sample(range(70000, 100000), cfg["sample_number"])]),
-#         "valid": Dataset.from_dict(all_dataset[random.sample(range(100000, 105000), cfg["sample_number"])])
-#     }
-# }
-#
-# attack_model = AttackModel(target_model, datasets, reference_model, shadow_model, cfg=cfg)
-# # attack_model.attack_demo(cfg, target_model)
-# # attack_model.attack_model_training(cfg=cfg)
-# attack_model.conduct_attack(cfg=cfg)
+"""
+
+datasets = {
+    "target": {
+        "train": train_dataset,
+        "valid": validation_dataset
+    },
+    # "shadow": {
+    #     "train": Dataset.from_dict(all_dataset[random.sample(range(35000, 65000), cfg["sample_number"])]),
+    #     "valid": Dataset.from_dict(all_dataset[random.sample(range(65000, 70000), cfg["sample_number"])])
+    # },
+    # "reference": {
+    #     "train": Dataset.from_dict(all_dataset[random.sample(range(70000, 100000), cfg["sample_number"])]),
+    #     "valid": Dataset.from_dict(all_dataset[random.sample(range(100000, 105000), cfg["sample_number"])])
+    # }
+}
+
+
+attack_model = AttackModel(target_model, datasets, reference_model, shadow_model, cfg=cfg)
+attack_model.conduct_attack(cfg=cfg)
