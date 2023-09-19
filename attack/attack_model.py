@@ -12,8 +12,9 @@ logger = get_logger(__name__, "INFO")
 PATH = os.getcwd()
 
 class AttackModel:
-    def __init__(self, target_model, datasets, reference_model, shadow_model, cfg):
+    def __init__(self, target_model, tokenizer, datasets, reference_model, shadow_model, cfg):
         self.target_model = target_model
+        self.tokenizer = tokenizer
         self.datasets = datasets
         self.kind = cfg['attack_kind']
         if shadow_model is not None and cfg['attack_kind'] == "nn":
@@ -22,37 +23,19 @@ class AttackModel:
         if reference_model is not None:
             self.reference_model = reference_model
 
-    def llm_eval(self, model, input, cfg):
+    def llm_eval(self, model, data_loader, cfg, perturb_fn=None):
         outputs = []
-        data_loader = DataLoader(
-            dataset=input,
-            batch_size=cfg["eval_batch_size"],
-            shuffle=False,
-            num_workers=32,
-            pin_memory=torch.cuda.is_available()
-        )
-        pipeline = model
-        model = pipeline.unet
         model.eval()
-        noise_scheduler = pipeline.scheduler
-        loss_function = getattr(self, cfg["loss_kind"]+"_loss")
-        diffusion_steps = noise_scheduler.config.num_train_timesteps
-        interval = diffusion_steps // cfg["diffusion_sample_number"]
-        sample_steps = cfg["diffusion_sample_steps"]
-
+        sample_steps = cfg["extensive_per_num"]
+        losses = []
         for iteration, batch in enumerate(data_loader):
-            clean_images = batch["input"].cuda()
-            batch_loss = np.zeros((cfg["eval_batch_size"], cfg["diffusion_sample_number"]))
-            # start_time = time.time()
-            for i, timestep in enumerate(sample_steps):
-                if cfg["loss_kind"] == "ddpm":
-                    loss = self.ddpm_loss(pipeline, clean_images, timestep)
-                elif cfg["loss_kind"] == "ddim":
-                    loss = self.ddim_loss(pipeline, clean_images, t_sec=timestep)
-                batch_loss[:, i] = loss
+            if perturb_fn is not None:
+                batch = perturb_fn(batch)
+            outputs = model(**batch)
+            loss = outputs.loss
+            losses.append(loss.item())
             # print(f"time duration: {time.time() - start_time}s")
-            outputs.append(batch_loss)
-        output = np.concatenate(outputs, axis=0)
+        output = np.array(outputs)
         return output
 
     def eval_perturb(self, model, dataset, cfg):
@@ -64,7 +47,6 @@ class AttackModel:
         """
         per_losses = []
         ref_per_losses = []
-        dataset_perturbation_function = self.image_dataset_perturbation if cfg["target_model"] == "vae" else self.norm_image_dataset_perturbation
         ori_dataset = deepcopy(dataset)
         ori_losses = self.llm_eval(model, ori_dataset, cfg)
         ref_ori_losses = self.llm_eval(self.reference_model, ori_dataset, cfg) if cfg["calibration"] else None

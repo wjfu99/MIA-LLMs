@@ -164,8 +164,8 @@ print("correct cnt  ref is: ", guess_cor_ref, "all is: ", len(losses), "ratio is
 
 datasets = {
     "target": {
-        "train": train_dataset,
-        "valid": validation_dataset
+        "train": train_dataloader,
+        "valid": eval_dataloader
     },
     # "shadow": {
     #     "train": Dataset.from_dict(all_dataset[random.sample(range(35000, 65000), cfg["sample_number"])]),
@@ -178,5 +178,5 @@ datasets = {
 }
 
 
-attack_model = AttackModel(target_model, datasets, reference_model, shadow_model, cfg=cfg)
+attack_model = AttackModel(target_model, tokenizer, datasets, reference_model, shadow_model, cfg=cfg)
 attack_model.conduct_attack(cfg=cfg)
