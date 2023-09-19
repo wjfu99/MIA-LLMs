@@ -17,7 +17,7 @@ import os
 os.environ['HTTP_PROXY'] = 'http://115.156.158.36:7890'
 os.environ['HTTPS_PROXY'] = 'http://115.156.158.36:7890'
 
-from utils import get_logger, ConstantLengthDataset, constantlengthdatasetiter
+from utils import get_logger, constantlengthdatasetiter
 # trl.trainer.ConstantLengthDataset.__dict__["__iter__"] = constantlengthdatasetiter
 setattr(trl.trainer.ConstantLengthDataset, "__iter__", constantlengthdatasetiter)
 
