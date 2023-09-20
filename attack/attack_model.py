@@ -153,6 +153,8 @@ class AttackModel:
         if cfg["attack_kind"] == "stat":
             mem_feat[np.isnan(mem_feat)] = 0
             nonmem_feat[np.isnan(nonmem_feat)] = 0
+            # feat = np.concatenate([info_dict.mem_feat.ori_losses, info_dict.nonmem_feat.ori_losses])
+            # feat = np.concatenate([info_dict.mem_feat.per_losses.mean(axis=(-1)), info_dict.nonmem_feat.per_losses.mean(axis=(-1))])
             feat = np.concatenate([mem_feat.mean(axis=(-1)), nonmem_feat.mean(axis=(-1))])
             ground_truth = np.concatenate([np.zeros(mem_feat.shape[0]), np.ones(nonmem_feat.shape[0])]).astype(int)
 
@@ -193,7 +195,8 @@ class AttackModel:
 
     @staticmethod
     def sentence_perturbation(batch, tokenizer):
-        aug = naw.RandomWordAug(action="swap", aug_p=0.2)
+        # aug = naw.RandomWordAug(action="swap", aug_p=0.2)
+        aug = naw.SynonymAug(aug_src="wordnet", aug_p=0.3)
         sentence = tokenizer.decode(batch["input_ids"][0])
         perturb_sentence = aug.augment(sentence)
         perturb_ids = tokenizer(perturb_sentence, truncation=True)["input_ids"]

@@ -10,7 +10,7 @@ add_eos_token: false
 add_bos_token: false
 pad_token_id: null
 attack_kind: stat # valid attacks: nn, stat
-maximum_samples: null
+maximum_samples: 200
 
 loss_kind: ddpm # valid loss estimation methods: ddpm, ddim
 time_step: 10
@@ -28,5 +28,5 @@ attack_data_path: attack
 #
 epoch_number: 110
 load_trained: false # whether to load existing trained attack model
-load_attack_data: true # whether to load prepared attack data if existing.
+load_attack_data: false # whether to load prepared attack data if existing.
 split: [123123, 3213]
