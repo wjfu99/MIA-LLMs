@@ -1,4 +1,6 @@
 import os
+import torch
+from accelerate import Accelerator
 from accelerate.logging import get_logger
 from attack import utils
 from attack.utils import Dict
@@ -6,11 +8,14 @@ import numpy as np
 from copy import deepcopy
 from tqdm import tqdm
 from torch.utils.data import DataLoader
+import nlpaug.augmenter.word as naw
+import nlpaug.augmenter.sentence as nas
 
 logger = get_logger(__name__, "INFO")
 
 PATH = os.getcwd()
 
+accelerator = Accelerator()
 class AttackModel:
     def __init__(self, target_model, tokenizer, datasets, reference_model, shadow_model, cfg):
         self.target_model = target_model
@@ -24,19 +29,18 @@ class AttackModel:
             self.reference_model = reference_model
 
     def llm_eval(self, model, data_loader, cfg, perturb_fn=None):
-        outputs = []
         model.eval()
         sample_steps = cfg["extensive_per_num"]
         losses = []
         for iteration, batch in enumerate(data_loader):
             if perturb_fn is not None:
-                batch = perturb_fn(batch)
+                batch = perturb_fn(batch, self.tokenizer)
             outputs = model(**batch)
             loss = outputs.loss
-            losses.append(loss.item())
+            losses.append(accelerator.gather(loss.reshape(-1, 1)).detach().cpu().to(torch.float32).numpy())
             # print(f"time duration: {time.time() - start_time}s")
-        output = np.array(outputs)
-        return output
+        losses = np.concatenate(losses, axis=0)
+        return losses
 
     def eval_perturb(self, model, dataset, cfg):
         """
@@ -52,12 +56,11 @@ class AttackModel:
         ref_ori_losses = self.llm_eval(self.reference_model, ori_dataset, cfg) if cfg["calibration"] else None
         strength = np.linspace(cfg['start_strength'], cfg['end_strength'], cfg['perturbation_number'])
         for i in tqdm(range(cfg["perturbation_number"])):
-            per_dataset = dataset_perturbation_function(dataset, strength=strength[i])
-            per_loss = self.llm_eval(model, per_dataset, cfg)
-            per_losses.append(np.expand_dims(per_loss, -1))
-            ref_per_loss = self.llm_eval(self.reference_model, per_dataset, cfg) if cfg["calibration"] else None
+            per_loss = self.llm_eval(model, ori_dataset, cfg, perturb_fn=self.sentence_perturbation)
+            per_losses.append(per_loss)
+            ref_per_loss = self.llm_eval(self.reference_model, ori_dataset, cfg, perturb_fn=self.sentence_perturbation) if cfg["calibration"] else None
             try:
-                ref_per_losses.append(np.expand_dims(ref_per_loss, -1))
+                ref_per_losses.append(ref_per_loss)
             except:
                 pass
         per_losses = np.concatenate(per_losses, axis=-1)
@@ -142,3 +145,14 @@ class AttackModel:
             #                              raw_info['nonmem_feat']['ori_losses'].mean(-1))
             # self.distinguishability_plot(feat[:1000], feat[-1000:])
             self.eval_attack(ground_truth, -feat, path=save_path)
+
+    @staticmethod
+    def sentence_perturbation(batch, tokenizer):
+        aug = naw.RandomWordAug(action="swap", aug_p=0.2)
+        sentence = tokenizer.decode(batch["input_ids"][0])
+        perturb_sentence = aug.augment(sentence)
+        perturb_ids = tokenizer(perturb_sentence, truncation=True)["input_ids"]
+        return {
+                    "input_ids": torch.LongTensor(perturb_ids).to(accelerator.device),
+                    "labels": torch.LongTensor(perturb_ids).to(accelerator.device)
+                }

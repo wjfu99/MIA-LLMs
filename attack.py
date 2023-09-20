@@ -58,6 +58,7 @@ bnb_config = None
 torch_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
 target_model = AutoModelForCausalLM.from_pretrained(cfg["target_model"], quantization_config=bnb_config,
                                                     torch_dtype=torch_dtype,
+                                                    local_files_only=True,
                                                     config=config)
 reference_model = AutoModelForCausalLM.from_pretrained(cfg["model_name"], quantization_config=bnb_config,
                                                        torch_dtype=torch_dtype,
