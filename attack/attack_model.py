@@ -36,8 +36,9 @@ class AttackModel:
         sample_steps = cfg["extensive_per_num"]
         losses = []
         for iteration, batch in enumerate(data_loader):
-            if iteration == cfg["maximum_samples"]:
-                break
+            if cfg["maximum_samples"] is not None:
+                if iteration * accelerator.num_processes >= cfg["maximum_samples"]:
+                    break
             if perturb_fn is not None:
                 batch = perturb_fn(batch, self.tokenizer)
             outputs = model(**batch)
@@ -196,9 +197,10 @@ class AttackModel:
     @staticmethod
     def sentence_perturbation(batch, tokenizer):
         # aug = naw.RandomWordAug(action="swap", aug_p=0.2)
-        aug = naw.SynonymAug(aug_src="wordnet", aug_p=0.3)
+        # aug = naw.SynonymAug(aug_src="wordnet", aug_p=0)
         sentence = tokenizer.decode(batch["input_ids"][0])
-        perturb_sentence = aug.augment(sentence)
+        # perturb_sentence = aug.augment(sentence)
+        perturb_sentence = sentence
         perturb_ids = tokenizer(perturb_sentence, truncation=True)["input_ids"]
         return {
                     "input_ids": torch.LongTensor(perturb_ids).to(accelerator.device),
