@@ -10,6 +10,8 @@ add_eos_token: false
 add_bos_token: false
 pad_token_id: null
 attack_kind: stat # valid attacks: nn, stat
+maximum_samples: null
+
 loss_kind: ddpm # valid loss estimation methods: ddpm, ddim
 time_step: 10
 time_sec: 100

@@ -10,6 +10,9 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 import nlpaug.augmenter.word as naw
 import nlpaug.augmenter.sentence as nas
+from sklearn.metrics import roc_auc_score, roc_curve, auc, precision_recall_curve, f1_score
+from itertools import cycle
+import matplotlib.pyplot as plt
 
 logger = get_logger(__name__, "INFO")
 
@@ -33,6 +36,8 @@ class AttackModel:
         sample_steps = cfg["extensive_per_num"]
         losses = []
         for iteration, batch in enumerate(data_loader):
+            if iteration == cfg["maximum_samples"]:
+                break
             if perturb_fn is not None:
                 batch = perturb_fn(batch, self.tokenizer)
             outputs = model(**batch)
@@ -64,9 +69,9 @@ class AttackModel:
             except:
                 pass
         per_losses = np.concatenate(per_losses, axis=-1)
-        var_losses = per_losses - np.expand_dims(ori_losses, -1)
+        var_losses = per_losses - ori_losses
         ref_per_losses = np.concatenate(ref_per_losses, axis=-1) if cfg["calibration"] else None
-        ref_var_losses = ref_per_losses - np.expand_dims(ref_ori_losses, -1) if cfg["calibration"] else None
+        ref_var_losses = ref_per_losses - ref_ori_losses if cfg["calibration"] else None
 
         output = (Dict(
             per_losses=per_losses,
@@ -82,7 +87,7 @@ class AttackModel:
 
     def data_prepare(self, kind, cfg):
         logger.info("Preparing data...")
-        data_path = os.path.join(PATH, cfg["attack_data_path"], f"attack_data_{cfg['target_model']}@{cfg['dataset_name']}")
+        data_path = os.path.join(PATH, cfg["attack_data_path"], f"attack_data_{cfg['model_name']}@{cfg['dataset_name']}")
         target_model = getattr(self, kind + "_model")
         mem_data = self.datasets[kind]["train"]
         nonmem_data = self.datasets[kind]["valid"]
@@ -126,6 +131,46 @@ class AttackModel:
             ref_nonmem_feat=ref_nonmem_feat,
                     )
 
+    def feat_prepare(self, info_dict, cfg):
+        # mem_info = info_dict.mem_feat
+        # ref_mem_info = info_dict.ref_mem_feat
+        if cfg["calibration"]:
+            mem_feat = info_dict.mem_feat.var_losses / info_dict.mem_feat.ori_losses\
+                       - info_dict.ref_mem_feat.ref_var_losses / info_dict.ref_mem_feat.ref_ori_losses
+            nonmem_feat = info_dict.nonmem_feat.var_losses / info_dict.nonmem_feat.ori_losses\
+                       - info_dict.ref_nonmem_feat.ref_var_losses / info_dict.ref_nonmem_feat.ref_ori_losses
+            # gen_feat = info_dict.gen_feat.var_losses / info_dict.gen_feat.ori_losses[:, :, None] \
+            #               - info_dict.ref_gen_feat.ref_var_losses / info_dict.ref_gen_feat.ref_ori_losses[:, :, None]
+        else:
+            mem_feat = info_dict.mem_feat.var_losses / info_dict.mem_feat.ori_losses
+            nonmem_feat = info_dict.nonmem_feat.var_losses / info_dict.nonmem_feat.ori_losses
+            # gen_feat = info_dict.gen_feat.var_losses / info_dict.gen_feat.ori_losses[:, :, None]
+        # if cfg["target_model"] == "diffusion":
+        #     mem_feat = mem_feat[:, 2, :]
+        #     nonmem_feat = nonmem_feat[:, 2, :]
+            # gen_feat = gen_feat[:, 2, :]
+
+        if cfg["attack_kind"] == "stat":
+            mem_feat[np.isnan(mem_feat)] = 0
+            nonmem_feat[np.isnan(nonmem_feat)] = 0
+            feat = np.concatenate([mem_feat.mean(axis=(-1)), nonmem_feat.mean(axis=(-1))])
+            ground_truth = np.concatenate([np.zeros(mem_feat.shape[0]), np.ones(nonmem_feat.shape[0])]).astype(int)
+
+        elif cfg["attack_kind"] == "nn":
+            # mem_freq = self.frequency(mem_feat, split=100)
+            # nonmem_freq = self.frequency(nonmem_feat, split=100)
+            # mem_feat, nonmem_feat = utils.ndarray_to_tensor(mem_freq, nonmem_freq)
+            mem_feat, nonmem_feat = utils.ndarray_to_tensor(mem_feat, nonmem_feat)
+            if cfg["target_model"] == "vae":
+                mem_feat.sort(axis=1)
+                nonmem_feat.sort(axis=1)
+            feat = torch.cat([mem_feat, nonmem_feat])
+            feat[torch.isnan(feat)] = 0
+            # if cfg["target_model"] == "diffusion":
+            feat = feat.unsqueeze(1)
+            ground_truth = torch.cat([torch.zeros(mem_feat.shape[0]), torch.ones(nonmem_feat.shape[0])]).type(torch.LongTensor).cuda()
+        return feat, ground_truth
+
     def conduct_attack(self, cfg):
         save_path = os.path.join(PATH, cfg["attack_data_path"], f"attack_data_{cfg['model_name']}@{cfg['dataset_name']}",
                                  f"roc_{cfg['attack_kind']}.npz")
@@ -156,3 +201,33 @@ class AttackModel:
                     "input_ids": torch.LongTensor(perturb_ids).to(accelerator.device),
                     "labels": torch.LongTensor(perturb_ids).to(accelerator.device)
                 }
+
+    @staticmethod
+    def eval_attack(y_true, y_scores, plot=True, path=None):
+        if type(y_true) == torch.Tensor:
+            y_true, y_scores = utils.tensor_to_ndarray(y_true, y_scores)
+        fpr, tpr, thresholds = roc_curve(y_true, y_scores)
+        if path is not None:
+            np.savez(path, fpr=fpr, tpr=tpr)
+        auc_score = roc_auc_score(y_true, y_scores)
+        logger.info(f"AUC on the target model: {auc_score}")
+
+        # Finding the threshold point where FPR + TPR equals 1
+        threshold_point = tpr[np.argmin(np.abs(tpr - (1 - fpr)))]
+        logger.info(f"ASR on the target model: {threshold_point}")
+
+        # Finding the threshold point where FPR + TPR equals 1
+        tpr_1fpr = tpr[np.argmin(np.abs(fpr - 0.01))]
+        logger.info(f"TPR@1%FPR on the target model: {tpr_1fpr}")
+
+
+        if plot:
+            # plot the ROC curve
+            plt.plot(fpr, tpr, label=f'ROC curve (AUC = {auc_score}; ASR = {threshold_point})')
+            plt.xlabel('False Positive Rate')
+            plt.ylabel('True Positive Rate')
+            plt.legend()
+            # plot the no-skill line for reference
+            plt.plot([0, 1], [0, 1], linestyle='--')
+            # show the plot
+            plt.show()
