@@ -3,6 +3,7 @@ from typing_extensions import Literal
 from rich.logging import RichHandler
 import os
 import torch
+import numpy as np
 
 
 def get_logger(name: str, level: Literal["info", "warning", "debug"]) -> logging.Logger:
