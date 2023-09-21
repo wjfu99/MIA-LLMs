@@ -1,4 +1,6 @@
 import os
+import random
+
 import torch
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -198,13 +200,18 @@ class AttackModel:
     def sentence_perturbation(batch, tokenizer):
         # aug = naw.RandomWordAug(action="swap", aug_p=0.2)
         # aug = naw.SynonymAug(aug_src="wordnet", aug_p=0)
-        sentence = tokenizer.decode(batch["input_ids"][0])
-        # perturb_sentence = aug.augment(sentence)
-        perturb_sentence = sentence
-        perturb_ids = tokenizer(perturb_sentence, truncation=True)["input_ids"]
+        # sentence = tokenizer.decode(batch["input_ids"][0])
+        # # perturb_sentence = aug.augment(sentence)
+        # perturb_sentence = sentence
+        # perturb_ids = tokenizer(perturb_sentence, truncation=True)["input_ids"]
+        perturb_ids = deepcopy(batch["input_ids"])
+        for i in range(batch["input_ids"].shape[1]):
+            if batch["input_ids"][0, i].item() != tokenizer.eos_token_id and random.random() < 0.01:
+                perturb_ids[0, i] = random.randint(0, 50255)
+
         return {
-                    "input_ids": torch.LongTensor(perturb_ids).to(accelerator.device),
-                    "labels": torch.LongTensor(perturb_ids).to(accelerator.device)
+                    "input_ids": perturb_ids,
+                    "labels": perturb_ids
                 }
 
     @staticmethod
