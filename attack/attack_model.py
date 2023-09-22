@@ -198,6 +198,16 @@ class AttackModel:
 
     @staticmethod
     def sentence_perturbation(batch, tokenizer):
+
+        ### Demo
+        ids = batch["input_ids"][0]
+        text_list = []
+        ids_list = []
+        for _ in range(100):
+            text = tokenizer.decode(ids)
+            text_list.append(text)
+            ids = tokenizer(text, truncation=True)["input_ids"]
+            ids_list.append(ids)
         # aug = naw.RandomWordAug(action="swap", aug_p=0.2)
         # aug = naw.SynonymAug(aug_src="wordnet", aug_p=0)
         # sentence = tokenizer.decode(batch["input_ids"][0])
