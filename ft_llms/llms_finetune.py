@@ -11,6 +11,10 @@ import logging
 import os
 from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training
 import pandas as pd
+import sys
+here = os.path.dirname(__file__)
+sys.path.append(os.path.join(here, '..'))
+from data.prepare import dataset_prepare
 
 import os
 
@@ -28,9 +32,13 @@ if __name__ == "__main__":
     parser.add_argument("-m", "--model_name", type=str, default="meta-llama/Llama-2-7b-hf")
     parser.add_argument("-d", "--dataset_name", type=str, default="wikitext-2-raw-v1")
     parser.add_argument("-dc", "--dataset_config_name", type=str, default=None, help="The configuration name of the dataset to use (via the datasets library).")
+    parser.add_argument("--cache_path", type=str, default="../cache")
+    parser.add_argument("--use_dataset_cache", action="store_true", default=False)
+    parser.add_argument("--packing", action="store_true", default=False)
     parser.add_argument("-t", "--token", type=str, default=None)
     parser.add_argument("--split_model", action="store_true", default=False)
-    parser.add_argument("--block_size", type=int, default=1000)
+    parser.add_argument("--block_size", type=int, default=1024)
+    parser.add_argument("--preprocessing_num_workers", type=int, default=1)
     parser.add_argument("--lora_rank", type=int, default=64)
     parser.add_argument("--lora_alpha", type=int, default=16)
     parser.add_argument("--lora_dropout", type=float, default=0.1)
@@ -39,10 +47,10 @@ if __name__ == "__main__":
     parser.add_argument("--lr_scheduler_type", type=str, default="linear")
     parser.add_argument("--warmup_steps", type=int, default=0)
     parser.add_argument("--weight_decay", type=float, default=0)
-    parser.add_argument("--output_dir", type=str, default="./checkpoints")
+    parser.add_argument("--output_dir", type=str, default="./ft_llms/checkpoints")
     parser.add_argument("--log_steps", type=int, default=10)
     parser.add_argument("--eval_steps", type=int, default=10)
-    parser.add_argument("--save_steps", type=int, default=10)
+    parser.add_argument("--save_epochs", type=int, default=10)
     parser.add_argument("-e", "--epochs", type=int, default=1)
     parser.add_argument("-b", "--batch_size", type=int, default=1)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
@@ -63,16 +71,14 @@ if __name__ == "__main__":
                         help="The percentage of the train set used as validation set in case there's no validation split")
     args = parser.parse_args()
 
+    accelerator = Accelerator()
+
     if args.token is None:
         access_token = os.getenv("HF_TOKEN", "")
     else:
         access_token = args.token
 
-    config_kwargs = {
-        "trust_remote_code": True if args.trust_remote_code else None,
-        "token": access_token
-    }
-    config = AutoConfig.from_pretrained(args.model_name, **config_kwargs)
+    config = AutoConfig.from_pretrained(args.model_name)
 
     config.use_cache = False
     config_dict = config.to_dict()
@@ -168,45 +174,21 @@ if __name__ == "__main__":
     else:
         logger.info("Using Full Finetuning")
 
-    raw_datasets = datasets.load_dataset(args.dataset_name, args.dataset_config_name)
-    if "validation" in raw_datasets.keys():
-        train_dataset = raw_datasets["train"]
-        validation_dataset = raw_datasets["validation"]
-    else:
-        train_dataset = datasets.load_dataset(
-            args.dataset_name,
-            args.dataset_config_name,
-            split=f"train[:{args.validation_split_percentage}%]"
-        )
-        validation_dataset = datasets.load_dataset(
-            args.dataset_name,
-            args.dataset_config_name,
-            split=f"train[{args.validation_split_percentage}%:]",
-        )
-    _train_dataset = trl.trainer.ConstantLengthDataset(
-        tokenizer,
-        train_dataset,
-        dataset_text_field="text",
-        seq_length=1024,
-        shuffle=False
-    )
-    dataset_len = 0
-    for _ in _train_dataset:
-        dataset_len += 1
+    with accelerator.main_process_first():
+        train_dataset, valid_dataset = dataset_prepare(args, tokenizer=tokenizer)
+
     logger.info(f"Training with {Accelerator().num_processes} GPUs")
-    logger.info(f"The total training steps is set to {int(args.epochs * dataset_len / args.gradient_accumulation_steps / Accelerator().num_processes)}")
     training_args = TrainingArguments(
         do_train=True,
         do_eval=True,
         output_dir=args.output_dir,
         dataloader_drop_last=True,
         evaluation_strategy="steps",
-        save_strategy="steps",
+        save_strategy="epoch",
         logging_strategy="steps",
         num_train_epochs=args.epochs,
-        max_steps=int(args.epochs * dataset_len / args.gradient_accumulation_steps / Accelerator().num_processes),
         eval_steps=args.eval_steps,
-        save_steps=args.save_steps,
+        save_steps=args.save_epochs,
         logging_steps=args.log_steps,
         per_device_train_batch_size=args.batch_size,
         per_device_eval_batch_size=args.batch_size * 2,
@@ -219,7 +201,7 @@ if __name__ == "__main__":
         weight_decay=args.weight_decay,
         adam_epsilon=1e-6,
         report_to="wandb",
-        load_best_model_at_end=True,
+        load_best_model_at_end=False,
         save_total_limit=args.save_limit,
         bf16=True if torch.cuda.is_bf16_supported() else False,
         fp16=False if torch.cuda.is_bf16_supported() else True,
@@ -230,11 +212,9 @@ if __name__ == "__main__":
         model=model,
         args=training_args,
         train_dataset=train_dataset,
-        eval_dataset=validation_dataset,
+        eval_dataset=valid_dataset,
         dataset_text_field="text",
-        max_seq_length=block_size,
         tokenizer=tokenizer,
-        packing=True
     )
 
     # train

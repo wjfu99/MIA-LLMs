@@ -7,7 +7,6 @@ from attack.utils import create_folder
 block_size = None
 tokenizer_ = None
 max_buff_size = None
-seq_length = None
 
 def packing_texts(examples):
     more_examples = True
@@ -36,16 +35,16 @@ def packing_texts(examples):
         all_token_ids = []
         for tokenized_input in tokenized_inputs:
             all_token_ids.extend(tokenized_input)
-        for i in range(0, len(all_token_ids), seq_length):
-            input_ids = all_token_ids[i: i + seq_length]
-            if len(input_ids) == seq_length:
+        for i in range(0, len(all_token_ids), block_size):
+            input_ids = all_token_ids[i: i + block_size]
+            if len(input_ids) == block_size:
                 packed_ids.append(input_ids)
                 input_text = tokenizer_.decode(input_ids)
                 total_num += 1
-                if len(tokenizer_.encode(input_text)) == seq_length:
+                if len(tokenizer_.encode(input_text)) == block_size:
                     packed_texts.append(input_text)
                     drop_num += 1
-    print(f"Total examples: {total_num}, dropped num: {drop_num}, dropped rate: {1 - drop_num/total_num}")
+    # print(f"Total examples: {total_num}, dropped num: {drop_num}, dropped rate: {1 - drop_num/total_num}")
     return {
         "text": packed_texts
     }
@@ -67,16 +66,15 @@ def dataset_prepare(args, tokenizer=None, num_of_sequences=1024, chars_per_token
         )
 
     if args.packing:
-        global block_size, tokenizer_, max_buff_size, seq_length
+        global block_size, tokenizer_, max_buff_size
         block_size = args.block_size
-        seq_length = num_of_sequences
         max_buff_size = block_size * chars_per_token * num_of_sequences
         tokenizer_ = tokenizer
         create_folder(f"{args.cache_path}/{args.dataset_name}/")
         train_dataset = train_dataset.map(
             packing_texts,
             batched=True,
-            batch_size=None,
+            # batch_size=None,
             num_proc=args.preprocessing_num_workers,
             cache_file_name=f"{args.cache_path}/{args.dataset_name}/train_dataset",
             load_from_cache_file=args.use_dataset_cache,
@@ -85,7 +83,7 @@ def dataset_prepare(args, tokenizer=None, num_of_sequences=1024, chars_per_token
         valid_dataset = valid_dataset.map(
             packing_texts,
             batched=True,
-            batch_size=None,
+            # batch_size=None,
             num_proc=args.preprocessing_num_workers,
             cache_file_name=f"{args.cache_path}/{args.dataset_name}/valid_dataset",
             load_from_cache_file=args.use_dataset_cache,
