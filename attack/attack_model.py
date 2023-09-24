@@ -15,6 +15,7 @@ import nlpaug.augmenter.sentence as nas
 from sklearn.metrics import roc_auc_score, roc_curve, auc, precision_recall_curve, f1_score
 from itertools import cycle
 import matplotlib.pyplot as plt
+import re
 
 logger = get_logger(__name__, "INFO")
 
@@ -22,11 +23,16 @@ PATH = os.getcwd()
 
 accelerator = Accelerator()
 class AttackModel:
-    def __init__(self, target_model, tokenizer, datasets, reference_model, shadow_model, cfg):
+    def __init__(self, target_model, tokenizer, datasets, reference_model, shadow_model, cfg, mask_model=None, mask_tokenizer=None):
         self.target_model = target_model
         self.tokenizer = tokenizer
         self.datasets = datasets
         self.kind = cfg['attack_kind']
+        self.cfg = cfg
+        if mask_model is not None:
+            self.mask_model = mask_model
+            self.mask_tokenizer = mask_tokenizer
+            self.pattern = re.compile(r"<extra_id_\d+>")
         if shadow_model is not None and cfg['attack_kind'] == "nn":
             self.shadow_model = shadow_model
             self.is_model_training = False
@@ -35,15 +41,17 @@ class AttackModel:
 
     def llm_eval(self, model, data_loader, cfg, perturb_fn=None):
         model.eval()
-        sample_steps = cfg["extensive_per_num"]
         losses = []
-        for iteration, batch in enumerate(data_loader):
+        for iteration, texts in enumerate(data_loader):
+            texts = texts["text"]
             if cfg["maximum_samples"] is not None:
                 if iteration * accelerator.num_processes >= cfg["maximum_samples"]:
                     break
             if perturb_fn is not None:
-                batch = perturb_fn(batch, self.tokenizer)
-            outputs = model(**batch)
+                texts = perturb_fn(texts)
+            token_ids = self.tokenizer(texts, return_tensors="pt", padding=True).to(accelerator.device)
+            labels = token_ids.input_ids
+            outputs = model(**token_ids, labels=labels)
             loss = outputs.loss
             losses.append(accelerator.gather(loss.reshape(-1, 1)).detach().cpu().to(torch.float32).numpy())
             # print(f"time duration: {time.time() - start_time}s")
@@ -196,33 +204,132 @@ class AttackModel:
             # self.distinguishability_plot(feat[:1000], feat[-1000:])
             self.eval_attack(ground_truth, -feat, path=save_path)
 
+    # @staticmethod
+    # def sentence_perturbation(batch, tokenizer):
+    #
+    #     ### Demo
+    #     ids = batch["input_ids"][0]
+    #     text_list = []
+    #     ids_list = []
+    #     for _ in range(100):
+    #         text = tokenizer.decode(ids)
+    #         text_list.append(text)
+    #         ids = tokenizer(text, truncation=True)["input_ids"]
+    #         ids_list.append(ids)
+    #     # aug = naw.RandomWordAug(action="swap", aug_p=0.2)
+    #     # aug = naw.SynonymAug(aug_src="wordnet", aug_p=0)
+    #     # sentence = tokenizer.decode(batch["input_ids"][0])
+    #     # # perturb_sentence = aug.augment(sentence)
+    #     # perturb_sentence = sentence
+    #     # perturb_ids = tokenizer(perturb_sentence, truncation=True)["input_ids"]
+    #     perturb_ids = deepcopy(batch["input_ids"])
+    #     for i in range(batch["input_ids"].shape[1]):
+    #         if batch["input_ids"][0, i].item() != tokenizer.eos_token_id and random.random() < 0.01:
+    #             perturb_ids[0, i] = random.randint(0, 50255)
+    #
+    #     return {
+    #                 "input_ids": perturb_ids,
+    #                 "labels": perturb_ids
+    #             }
+
+    def tokenize_and_mask(self, text, span_length, pct, ceil_pct=False):
+        cfg = self.cfg
+        tokens = text.split(' ')
+        mask_string = '<<<mask>>>'
+
+        n_spans = pct * len(tokens) / (span_length + cfg.buffer_size * 2)
+        if ceil_pct:
+            n_spans = np.ceil(n_spans)
+        n_spans = int(n_spans)
+
+        n_masks = 0
+        while n_masks < n_spans:
+            start = np.random.randint(0, len(tokens) - span_length)
+            end = start + span_length
+            search_start = max(0, start - cfg.buffer_size)
+            search_end = min(len(tokens), end + cfg.buffer_size)
+            if mask_string not in tokens[search_start:search_end]:
+                tokens[start:end] = [mask_string]
+                n_masks += 1
+
+        # replace each occurrence of mask_string with <extra_id_NUM>, where NUM increments
+        num_filled = 0
+        for idx, token in enumerate(tokens):
+            if token == mask_string:
+                tokens[idx] = f'<extra_id_{num_filled}>'
+                num_filled += 1
+        assert num_filled == n_masks, f"num_filled {num_filled} != n_masks {n_masks}"
+        text = ' '.join(tokens)
+        return text
+
     @staticmethod
-    def sentence_perturbation(batch, tokenizer):
+    def count_masks(texts):
+        return [len([x for x in text.split() if x.startswith("<extra_id_")]) for text in texts]
 
-        ### Demo
-        ids = batch["input_ids"][0]
-        text_list = []
-        ids_list = []
-        for _ in range(100):
-            text = tokenizer.decode(ids)
-            text_list.append(text)
-            ids = tokenizer(text, truncation=True)["input_ids"]
-            ids_list.append(ids)
-        # aug = naw.RandomWordAug(action="swap", aug_p=0.2)
-        # aug = naw.SynonymAug(aug_src="wordnet", aug_p=0)
-        # sentence = tokenizer.decode(batch["input_ids"][0])
-        # # perturb_sentence = aug.augment(sentence)
-        # perturb_sentence = sentence
-        # perturb_ids = tokenizer(perturb_sentence, truncation=True)["input_ids"]
-        perturb_ids = deepcopy(batch["input_ids"])
-        for i in range(batch["input_ids"].shape[1]):
-            if batch["input_ids"][0, i].item() != tokenizer.eos_token_id and random.random() < 0.01:
-                perturb_ids[0, i] = random.randint(0, 50255)
+    def replace_masks(self, texts):
+        """
+        predict mask tokens with the mask model.
+        :param texts:
+        :return:
+        """
+        cfg = self.cfg
+        n_expected = self.count_masks(texts)
+        stop_id = self.mask_tokenizer.encode(f"<extra_id_{max(n_expected)}>")[0]
+        tokens = self.mask_tokenizer(texts, return_tensors="pt", padding=True).to(accelerator.device)
+        outputs = self.mask_model.generate(**tokens, max_length=150, do_sample=True, top_p=cfg.mask_top_p,
+                                      num_return_sequences=1, eos_token_id=stop_id)
+        return self.mask_tokenizer.batch_decode(outputs, skip_special_tokens=False)
 
-        return {
-                    "input_ids": perturb_ids,
-                    "labels": perturb_ids
-                }
+    def extract_fills(self, texts):
+        # remove <pad> from beginning of each text
+        texts = [x.replace("<pad>", "").replace("</s>", "").strip() for x in texts]
+
+        # return the text in between each matched mask token
+        extracted_fills = [self.pattern.split(x)[1:-1] for x in texts]
+
+        # remove whitespace around each fill
+        extracted_fills = [[y.strip() for y in x] for x in extracted_fills]
+
+        return extracted_fills
+
+    def apply_extracted_fills(self, masked_texts, extracted_fills):
+        # split masked text into tokens, only splitting on spaces (not newlines)
+        tokens = [x.split(' ') for x in masked_texts]
+
+        n_expected = self.count_masks(masked_texts)
+
+        # replace each mask token with the corresponding fill
+        for idx, (text, fills, n) in enumerate(zip(tokens, extracted_fills, n_expected)):
+            if len(fills) < n:
+                tokens[idx] = []
+            else:
+                for fill_idx in range(n):
+                    text[text.index(f"<extra_id_{fill_idx}>")] = fills[fill_idx]
+
+        # join tokens back into text
+        texts = [" ".join(x) for x in tokens]
+        return texts
+
+    def sentence_perturbation(self, texts):
+        cfg = self.cfg
+        masked_texts = [self.tokenize_and_mask(x, cfg.span_length, cfg.pct, cfg.ceil_pct) for x in texts]
+        raw_fills = self.replace_masks(masked_texts)
+        extracted_fills = self.extract_fills(raw_fills)
+        perturbed_texts = self.apply_extracted_fills(masked_texts, extracted_fills)
+
+        # Handle the fact that sometimes the model doesn't generate the right number of fills and we have to try again
+        attempts = 1
+        while '' in perturbed_texts:
+            idxs = [idx for idx, x in enumerate(perturbed_texts) if x == '']
+            print(f'WARNING: {len(idxs)} texts have no fills. Trying again [attempt {attempts}].')
+            masked_texts = [self.tokenize_and_mask(x, cfg.span_length, cfg.pct, cfg.ceil_pct) for idx, x in enumerate(texts) if idx in idxs]
+            raw_fills = self.replace_masks(masked_texts)
+            extracted_fills = self.extract_fills(raw_fills)
+            new_perturbed_texts = self.apply_extracted_fills(masked_texts, extracted_fills)
+            for idx, x in zip(idxs, new_perturbed_texts):
+                perturbed_texts[idx] = x
+            attempts += 1
+        return perturbed_texts
 
     @staticmethod
     def eval_attack(y_true, y_scores, plot=True, path=None):

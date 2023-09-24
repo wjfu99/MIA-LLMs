@@ -2,22 +2,36 @@ tensorboard: True
 random_seed: 48
 
 model_name: gpt2
-target_model: ./ft_llms/checkpoints/checkpoint-200 # valid model:
+target_model: ./ft_llms/checkpoints/checkpoint-14400 # valid model:
 reference_model: #
 dataset_name: wikitext # valid dataset:
 dataset_config_name: wikitext-2-raw-v1
+cache_path: ./cache
+use_dataset_cache: true
+packing: true
 add_eos_token: false
 add_bos_token: false
 pad_token_id: null
 attack_kind: stat # valid attacks: nn, stat
-maximum_samples: 200
+eval_batch_size: 8 # batch size of the evaluation phase
+maximum_samples: 200 # the maximum samples number for member and non-member records.
+block_size: 1024
+preprocessing_num_workers: 1
+mask_filling_model_name: t5-small
+buffer_size: 1 # TODO: figure out how this parameter works.
+mask_top_p: 1.0
+span_length: 2
+pct: 0.3 # pct_words_masked
+ceil_pct: false
+int8: false
+half: false
 
 loss_kind: ddpm # valid loss estimation methods: ddpm, ddim
 time_step: 10
 time_sec: 100
 calibration: true # whether to enable calibration
 sample_number: 1000 # the number of samples for each data group
-eval_batch_size: 100 # batch size of the evaluation phase
+
 diffusion_sample_number: 10 # the number of equidistant sampling
 diffusion_sample_steps: [0, 50, 100, 150, 200, 250, 300, 350, 400, 450] # the sample steps of diffusion model
 perturbation_number: 10 # the number of query

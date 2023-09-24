@@ -7,6 +7,8 @@ import logging
 import random
 
 from attack.attack_model import AttackModel
+from data.prepare import dataset_prepare
+from attack.utils import Dict
 
 import yaml
 import datasets
@@ -14,7 +16,7 @@ from datasets import Image, Dataset
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 import trl
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, TrainingArguments, AutoConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2SeqLM, BitsAndBytesConfig, TrainingArguments, AutoConfig
 
 os.environ['HTTP_PROXY'] = 'http://115.156.158.36:7890'
 os.environ['HTTPS_PROXY'] = 'http://115.156.158.36:7890'
@@ -22,6 +24,7 @@ os.environ['HTTPS_PROXY'] = 'http://115.156.158.36:7890'
 # Load config file
 with open("configs/config.yaml", 'r') as f:
     cfg = yaml.safe_load(f)
+    cfg = Dict(cfg)
 
 # Add Logger
 accelerator = Accelerator()
@@ -52,75 +55,66 @@ torch.backends.cudnn.benchmark = False
 torch.backends.cudnn.deterministic = True
 
 ## Load generation models.
-config = AutoConfig.from_pretrained(cfg["model_name"])
-config.use_cache = False
-bnb_config = None
-torch_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-target_model = AutoModelForCausalLM.from_pretrained(cfg["target_model"], quantization_config=bnb_config,
-                                                    torch_dtype=torch_dtype,
-                                                    local_files_only=True,
-                                                    config=config)
-reference_model = AutoModelForCausalLM.from_pretrained(cfg["model_name"], quantization_config=bnb_config,
-                                                       torch_dtype=torch_dtype,
-                                                       config=config)
-shadow_model = None
-logger.info("Successfully load models")
+with accelerator.main_process_first():
+    config = AutoConfig.from_pretrained(cfg["model_name"])
+    config.use_cache = False
+    bnb_config = None
+    torch_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+    target_model = AutoModelForCausalLM.from_pretrained(cfg["target_model"], quantization_config=bnb_config,
+                                                        torch_dtype=torch_dtype,
+                                                        local_files_only=True,
+                                                        config=config)
+    reference_model = AutoModelForCausalLM.from_pretrained(cfg["model_name"], quantization_config=bnb_config,
+                                                           torch_dtype=torch_dtype,
+                                                           config=config)
+    shadow_model = None
+    int8_kwargs = {}
+    half_kwargs = {}
+    if cfg["int8"]:
+        int8_kwargs = dict(load_in_8bit=True, device_map='auto', torch_dtype=torch.bfloat16)
+    elif cfg["half"]:
+        half_kwargs = dict(torch_dtype=torch.bfloat16)
+    mask_model = AutoModelForSeq2SeqLM.from_pretrained(cfg["mask_filling_model_name"], **int8_kwargs, **half_kwargs)
+    try:
+        n_positions = mask_model.config.n_positions
+    except AttributeError:
+        n_positions = 512
 
-# Load tokenizer.
-tokenizer = AutoTokenizer.from_pretrained(cfg["model_name"], add_eos_token=cfg["add_eos_token"],
-                                          add_bos_token=cfg["add_bos_token"], use_fast=True)
-if cfg["pad_token_id"] is not None:
-    logger.info("Using pad token id %d", cfg["pad_token_id"])
-    tokenizer.pad_token_id = cfg["pad_token_id"]
+    logger.info("Successfully load models")
 
-if tokenizer.pad_token_id is None:
-    logger.info("Pad token id is None, setting to eos token id...")
-    tokenizer.pad_token_id = tokenizer.eos_token_id
+    # Load tokenizer.
+    tokenizer = AutoTokenizer.from_pretrained(cfg["model_name"], add_eos_token=cfg["add_eos_token"],
+                                              add_bos_token=cfg["add_bos_token"], use_fast=True)
+    mask_tokenizer = AutoTokenizer.from_pretrained(cfg["mask_filling_model_name"], model_max_length=n_positions)
 
-# Load datasets
-raw_datasets = datasets.load_dataset(cfg["dataset_name"], cfg["dataset_config_name"])
-if "validation" in raw_datasets.keys():
-    train_dataset = raw_datasets["train"]
-    validation_dataset = raw_datasets["validation"]
-else:
-    logger.info(
-        f"No validation set in the raw dataset, split {cfg['validation_split_percentage']}% from the training set")
-    train_dataset = datasets.load_dataset(
-        cfg["dataset_name"],
-        cfg["dataset_config_name"],
-        split=f"train[:{cfg['validation_split_percentage']}%]"
-    )
-    validation_dataset = datasets.load_dataset(
-        cfg["dataset_name"],
-        cfg["dataset_config_name"],
-        split=f"train[{cfg['validation_split_percentage']}%:]",
-    )
-logger.info("Successfully load datasets!")
+    if cfg["pad_token_id"] is not None:
+        logger.info("Using pad token id %d", cfg["pad_token_id"])
+        tokenizer.pad_token_id = cfg["pad_token_id"]
 
-# Prepare dataloader
-train_dataset = trl.trainer.ConstantLengthDataset(
-    tokenizer,
-    train_dataset,
-    dataset_text_field="text",
-    seq_length=1024,
-    eos_token_id=tokenizer.eos_token_id,
-    shuffle=False,
-)
-validation_dataset = trl.trainer.ConstantLengthDataset(
-    tokenizer,
-    validation_dataset,
-    dataset_text_field="text",
-    seq_length=1024,
-    eos_token_id=tokenizer.eos_token_id,
-    shuffle=False,
-)
-train_dataloader = DataLoader(train_dataset)
-eval_dataloader = DataLoader(validation_dataset)
+    if tokenizer.pad_token_id is None:
+        logger.info("Pad token id is None, setting to eos token id...")
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+
+    # Load datasets
+    train_dataset, valid_dataset = dataset_prepare(cfg, tokenizer=tokenizer)
+    logger.info("Successfully load datasets!")
+
+    # Prepare dataloade
+    train_dataloader = DataLoader(train_dataset, batch_size=cfg["eval_batch_size"])
+    eval_dataloader = DataLoader(valid_dataset, batch_size=cfg["eval_batch_size"])
 
 # Prepare everything with accelerator
-target_model, reference_model, train_dataloader, eval_dataloader = accelerator.prepare(
-    target_model, reference_model, train_dataloader, eval_dataloader
-)
+target_model, reference_model, shadow_model, mask_model, train_dataloader, eval_dataloader, tokenizer, mask_tokenizer = (
+    accelerator.prepare(
+        target_model,
+        reference_model,
+        shadow_model,
+        mask_model,
+        train_dataloader,
+        eval_dataloader,
+        tokenizer,
+        mask_tokenizer
+))
 
 """
 losses = []
@@ -179,5 +173,5 @@ datasets = {
 }
 
 
-attack_model = AttackModel(target_model, tokenizer, datasets, reference_model, shadow_model, cfg=cfg)
+attack_model = AttackModel(target_model, tokenizer, datasets, reference_model, shadow_model, cfg, mask_model=mask_model, mask_tokenizer=mask_tokenizer)
 attack_model.conduct_attack(cfg=cfg)
