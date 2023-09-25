@@ -13,7 +13,7 @@ add_eos_token: false
 add_bos_token: false
 pad_token_id: null
 attack_kind: stat # valid attacks: nn, stat
-eval_batch_size: 8 # batch size of the evaluation phase
+eval_batch_size: 1 # batch size of the evaluation phase
 maximum_samples: 200 # the maximum samples number for member and non-member records.
 block_size: 1024
 preprocessing_num_workers: 1
@@ -21,7 +21,7 @@ mask_filling_model_name: t5-small
 buffer_size: 1 # TODO: figure out how this parameter works.
 mask_top_p: 1.0
 span_length: 2
-pct: 0.3 # pct_words_masked
+pct: 0.1 # pct_words_masked
 ceil_pct: false
 int8: false
 half: false
@@ -42,5 +42,5 @@ attack_data_path: attack
 #
 epoch_number: 110
 load_trained: false # whether to load existing trained attack model
-load_attack_data: true # whether to load prepared attack data if existing.
+load_attack_data: false # whether to load prepared attack data if existing.
 split: [123123, 3213]
