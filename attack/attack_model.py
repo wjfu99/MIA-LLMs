@@ -167,6 +167,7 @@ class AttackModel:
             # feat = np.concatenate([info_dict.mem_feat.ori_losses - info_dict.ref_mem_feat.ref_ori_losses, info_dict.nonmem_feat.ori_losses - info_dict.ref_nonmem_feat.ref_ori_losses])
             # feat = np.concatenate([info_dict.mem_feat.per_losses.mean(axis=(-1)), info_dict.nonmem_feat.per_losses.mean(axis=(-1))])
             feat = np.concatenate([mem_feat.mean(axis=(-1)), nonmem_feat.mean(axis=(-1))])
+            # feat = np.concatenate([info_dict.mem_feat.var_losses.min(axis=-1), info_dict.nonmem_feat.var_losses.min(axis=-1)])
             ground_truth = np.concatenate([np.zeros(mem_feat.shape[0]), np.ones(nonmem_feat.shape[0])]).astype(int)
 
         elif cfg["attack_kind"] == "nn":
