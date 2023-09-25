@@ -67,25 +67,12 @@ with accelerator.main_process_first():
     reference_model = AutoModelForCausalLM.from_pretrained(cfg["model_name"], quantization_config=bnb_config,
                                                            torch_dtype=torch_dtype,
                                                            config=config)
-    shadow_model = None
-    int8_kwargs = {}
-    half_kwargs = {}
-    if cfg["int8"]:
-        int8_kwargs = dict(load_in_8bit=True, device_map='auto', torch_dtype=torch.bfloat16)
-    elif cfg["half"]:
-        half_kwargs = dict(torch_dtype=torch.bfloat16)
-    mask_model = AutoModelForSeq2SeqLM.from_pretrained(cfg["mask_filling_model_name"], **int8_kwargs, **half_kwargs)
-    try:
-        n_positions = mask_model.config.n_positions
-    except AttributeError:
-        n_positions = 512
 
     logger.info("Successfully load models")
 
     # Load tokenizer.
     tokenizer = AutoTokenizer.from_pretrained(cfg["model_name"], add_eos_token=cfg["add_eos_token"],
                                               add_bos_token=cfg["add_bos_token"], use_fast=True)
-    mask_tokenizer = AutoTokenizer.from_pretrained(cfg["mask_filling_model_name"], model_max_length=n_positions)
 
     if cfg["pad_token_id"] is not None:
         logger.info("Using pad token id %d", cfg["pad_token_id"])
@@ -103,17 +90,29 @@ with accelerator.main_process_first():
     train_dataloader = DataLoader(train_dataset, batch_size=cfg["eval_batch_size"])
     eval_dataloader = DataLoader(valid_dataset, batch_size=cfg["eval_batch_size"])
 
+shadow_model = None
+int8_kwargs = {}
+half_kwargs = {}
+if cfg["int8"]:
+    int8_kwargs = dict(load_in_8bit=True, device_map='auto', torch_dtype=torch.bfloat16)
+elif cfg["half"]:
+    half_kwargs = dict(torch_dtype=torch.bfloat16)
+mask_model = AutoModelForSeq2SeqLM.from_pretrained(cfg["mask_filling_model_name"], **int8_kwargs, **half_kwargs).to(accelerator.device)
+try:
+    n_positions = mask_model.config.n_positions
+except AttributeError:
+    n_positions = 512
+mask_tokenizer = AutoTokenizer.from_pretrained(cfg["mask_filling_model_name"], model_max_length=n_positions)
+
 # Prepare everything with accelerator
-target_model, reference_model, shadow_model, mask_model, train_dataloader, eval_dataloader, tokenizer, mask_tokenizer = (
+target_model, reference_model, shadow_model, train_dataloader, eval_dataloader, tokenizer = (
     accelerator.prepare(
         target_model,
         reference_model,
         shadow_model,
-        mask_model,
         train_dataloader,
         eval_dataloader,
         tokenizer,
-        mask_tokenizer
 ))
 
 """
