@@ -21,11 +21,11 @@ mask_filling_model_name: t5-small
 buffer_size: 1 # TODO: figure out how this parameter works.
 mask_top_p: 1.0
 span_length: 2
-pct: 0.1 # pct_words_masked
+pct: 0.3 # pct_words_masked
 ceil_pct: false
 int8: false
 half: false
-perturbation_number: 100 # the number of query
+perturbation_number: 10 # the number of query
 
 loss_kind: ddpm # valid loss estimation methods: ddpm, ddim
 time_step: 10

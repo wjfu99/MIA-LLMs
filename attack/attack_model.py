@@ -16,6 +16,7 @@ from sklearn.metrics import roc_auc_score, roc_curve, auc, precision_recall_curv
 from itertools import cycle
 import matplotlib.pyplot as plt
 import re
+import seaborn as sns
 
 logger = get_logger(__name__, "INFO")
 
@@ -39,9 +40,10 @@ class AttackModel:
         if reference_model is not None:
             self.reference_model = reference_model
 
-    def llm_eval(self, model, data_loader, cfg, perturb_fn=None):
+    def llm_eval(self, model, data_loader, cfg, perturb_fn=None, refer_model=None):
         model.eval()
         losses = []
+        ref_losses = []
         for iteration, texts in enumerate(data_loader):
             texts = texts["text"]
             if cfg["maximum_samples"] is not None:
@@ -52,11 +54,15 @@ class AttackModel:
             token_ids = self.tokenizer(texts, return_tensors="pt", padding=True).to(accelerator.device)
             labels = token_ids.input_ids
             outputs = model(**token_ids, labels=labels)
+            ref_outputs = refer_model(**token_ids, labels=labels)
             loss = outputs.loss
+            ref_loss = ref_outputs.loss
             losses.append(accelerator.gather(loss.reshape(-1, 1)).detach().cpu().to(torch.float32).numpy())
+            ref_losses.append(accelerator.gather(ref_loss.reshape(-1, 1)).detach().cpu().to(torch.float32).numpy())
             # print(f"time duration: {time.time() - start_time}s")
         losses = np.concatenate(losses, axis=0)
-        return losses
+        ref_losses = np.concatenate(ref_losses, axis=0)
+        return losses, ref_losses
 
     def eval_perturb(self, model, dataset, cfg):
         """
@@ -68,17 +74,13 @@ class AttackModel:
         per_losses = []
         ref_per_losses = []
         ori_dataset = deepcopy(dataset)
-        ori_losses = self.llm_eval(model, ori_dataset, cfg)
-        ref_ori_losses = self.llm_eval(self.reference_model, ori_dataset, cfg) if cfg["calibration"] else None
+        # TODO: the argument calibration is not work.
+        ori_losses, ref_ori_losses = self.llm_eval(model, ori_dataset, cfg, refer_model=self.reference_model)
         strength = np.linspace(cfg['start_strength'], cfg['end_strength'], cfg['perturbation_number'])
         for i in tqdm(range(cfg["perturbation_number"])):
-            per_loss = self.llm_eval(model, ori_dataset, cfg, perturb_fn=self.sentence_perturbation)
+            per_loss, ref_per_loss = self.llm_eval(model, ori_dataset, cfg, perturb_fn=self.sentence_perturbation, refer_model=self.reference_model)
             per_losses.append(per_loss)
-            ref_per_loss = self.llm_eval(self.reference_model, ori_dataset, cfg, perturb_fn=self.sentence_perturbation) if cfg["calibration"] else None
-            try:
-                ref_per_losses.append(ref_per_loss)
-            except:
-                pass
+            ref_per_losses.append(ref_per_loss)
         per_losses = np.concatenate(per_losses, axis=-1)
         var_losses = per_losses - ori_losses
         ref_per_losses = np.concatenate(ref_per_losses, axis=-1) if cfg["calibration"] else None
@@ -277,7 +279,7 @@ class AttackModel:
         n_expected = self.count_masks(texts)
         stop_id = self.mask_tokenizer.encode(f"<extra_id_{max(n_expected)}>")[0]
         tokens = self.mask_tokenizer(texts, return_tensors="pt", padding=True).to(accelerator.device)
-        outputs = self.mask_model.generate(**tokens, max_length=150, do_sample=True, top_p=cfg.mask_top_p,
+        outputs = accelerator.unwrap_model(self.mask_model).generate(**tokens, max_length=150, do_sample=True, top_p=cfg.mask_top_p,
                                       num_return_sequences=1, eos_token_id=stop_id)
         return self.mask_tokenizer.batch_decode(outputs, skip_special_tokens=False)
 
@@ -361,3 +363,38 @@ class AttackModel:
             plt.plot([0, 1], [0, 1], linestyle='--')
             # show the plot
             plt.show()
+
+    @staticmethod
+    def distinguishability_plot(mem, non_mem):
+        sns.set_theme()
+        mem_color = "indianred"
+        non_mem_color = "forestgreen"
+        sns.kdeplot(mem, fill=True, color=mem_color, alpha=0.5)
+        sns.kdeplot(non_mem, fill=True, color=non_mem_color, alpha=0.5)
+
+        mem_mean = round(mem.mean(), 2)
+        mem_std = round(mem.std(), 2)
+        non_mem_mean = round(non_mem.mean(), 2)
+        non_mem_std = round(non_mem.std(), 2)
+
+        # plt.xlabel(r"${\mathcal{F}}({x}, \theta)$", fontsize=22, labelpad=10)
+        plt.xlabel(r"$\Delta \widehat{p}_{\theta}$", fontsize=22, labelpad=10)
+        plt.ylabel('Density', fontsize=22, labelpad=10)
+        plt.legend(['Member', 'Non-member'], fontsize=20, loc='upper right')
+        # plt.xlim([-0.6, 0.9])
+        mem_text = '\n'.join((
+                    r'$\mu_{Mem}=%.2f$' % (mem_mean, ),
+                    r'$\sigma_{Mem}=%.2f$' % (mem_std, )))
+        non_mem_text = '\n'.join((
+                    r'$\mu_{Non}=%.2f$' % (non_mem_mean, ),
+                    r'$\sigma_{Non}=%.2f$' % (non_mem_std, )))
+        mem_props = dict(boxstyle='round', facecolor=mem_color, alpha=0.15, edgecolor='black')
+        non_mem_props = dict(boxstyle='round', facecolor=non_mem_color, alpha=0.15, edgecolor='black')
+
+        plt.tick_params(labelsize=16)
+        # plt.text(0.63, 0.25, mem_text, transform=plt.gca().transAxes, fontsize=22, bbox=mem_props)
+        # plt.text(0.04, 0.6, non_mem_text, transform=plt.gca().transAxes, fontsize=22, bbox=non_mem_props)
+
+        plt.tight_layout()
+        # plt.savefig("distinguishability-diffusion-our.pdf", format="pdf", bbox_inches="tight")
+        plt.show()

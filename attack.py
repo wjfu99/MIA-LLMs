@@ -91,22 +91,22 @@ if not cfg["load_attack_data"]:
         train_dataloader = DataLoader(train_dataset, batch_size=cfg["eval_batch_size"])
         eval_dataloader = DataLoader(valid_dataset, batch_size=cfg["eval_batch_size"])
 
-    shadow_model = None
-    int8_kwargs = {}
-    half_kwargs = {}
-    if cfg["int8"]:
-        int8_kwargs = dict(load_in_8bit=True, device_map='auto', torch_dtype=torch.bfloat16)
-    elif cfg["half"]:
-        half_kwargs = dict(torch_dtype=torch.bfloat16)
-    mask_model = AutoModelForSeq2SeqLM.from_pretrained(cfg["mask_filling_model_name"], **int8_kwargs, **half_kwargs).to(accelerator.device)
-    try:
-        n_positions = mask_model.config.n_positions
-    except AttributeError:
-        n_positions = 512
-    mask_tokenizer = AutoTokenizer.from_pretrained(cfg["mask_filling_model_name"], model_max_length=n_positions)
+        shadow_model = None
+        int8_kwargs = {}
+        half_kwargs = {}
+        if cfg["int8"]:
+            int8_kwargs = dict(load_in_8bit=True, device_map='auto', torch_dtype=torch.bfloat16)
+        elif cfg["half"]:
+            half_kwargs = dict(torch_dtype=torch.bfloat16)
+        mask_model = AutoModelForSeq2SeqLM.from_pretrained(cfg["mask_filling_model_name"], **int8_kwargs, **half_kwargs).to(accelerator.device)
+        try:
+            n_positions = mask_model.config.n_positions
+        except AttributeError:
+            n_positions = 512
+        mask_tokenizer = AutoTokenizer.from_pretrained(cfg["mask_filling_model_name"], model_max_length=n_positions)
 
     # Prepare everything with accelerator
-    target_model, reference_model, shadow_model, train_dataloader, eval_dataloader, tokenizer = (
+    target_model, reference_model, shadow_model, train_dataloader, eval_dataloader, tokenizer, mask_model, mask_tokenizer = (
         accelerator.prepare(
             target_model,
             reference_model,
@@ -114,6 +114,8 @@ if not cfg["load_attack_data"]:
             train_dataloader,
             eval_dataloader,
             tokenizer,
+            mask_model,
+            mask_tokenizer
     ))
 else:
     target_model = None
