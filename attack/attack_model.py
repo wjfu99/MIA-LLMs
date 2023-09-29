@@ -17,6 +17,7 @@ from itertools import cycle
 import matplotlib.pyplot as plt
 import re
 import seaborn as sns
+from functools import partial
 
 logger = get_logger(__name__, "INFO")
 
@@ -59,6 +60,7 @@ class AttackModel:
             ref_loss = ref_outputs.loss
             losses.append(accelerator.gather(loss.reshape(-1, 1)).detach().cpu().to(torch.float32).numpy())
             ref_losses.append(accelerator.gather(ref_loss.reshape(-1, 1)).detach().cpu().to(torch.float32).numpy())
+            # print(f"{accelerator.device}@{texts}")
             # print(f"time duration: {time.time() - start_time}s")
         losses = np.concatenate(losses, axis=0)
         ref_losses = np.concatenate(ref_losses, axis=0)
@@ -78,13 +80,22 @@ class AttackModel:
         ori_losses, ref_ori_losses = self.llm_eval(model, ori_dataset, cfg, refer_model=self.reference_model)
         strength = np.linspace(cfg['start_strength'], cfg['end_strength'], cfg['perturbation_number'])
         for i in tqdm(range(cfg["perturbation_number"])):
-            per_loss, ref_per_loss = self.llm_eval(model, ori_dataset, cfg, perturb_fn=self.sentence_perturbation, refer_model=self.reference_model)
-            per_losses.append(per_loss)
-            ref_per_losses.append(ref_per_loss)
+            idx_rate = i / cfg["perturbation_number"]
+            perturb_fn = partial(self.sentence_idx_perturbation, idx_rate=idx_rate)
+            sampled_per_losses = []
+            sampled_ref_per_losses = []
+            for _ in range(cfg["sample_number"]):
+                per_loss, ref_per_loss = self.llm_eval(model, ori_dataset, cfg, perturb_fn=perturb_fn, refer_model=self.reference_model)
+                sampled_per_losses.append(per_loss)
+                sampled_ref_per_losses.append(ref_per_loss)
+            sampled_per_losses = np.concatenate(sampled_per_losses, axis=-1)
+            sampled_ref_per_losses = np.concatenate(sampled_ref_per_losses, axis=-1)
+            per_losses.append(np.expand_dims(sampled_per_losses, axis=-1))
+            ref_per_losses.append(np.expand_dims(sampled_ref_per_losses, axis=-1))
         per_losses = np.concatenate(per_losses, axis=-1)
-        var_losses = per_losses - ori_losses
+        var_losses = per_losses - np.expand_dims(ori_losses, axis=-1)
         ref_per_losses = np.concatenate(ref_per_losses, axis=-1) if cfg["calibration"] else None
-        ref_var_losses = ref_per_losses - ref_ori_losses if cfg["calibration"] else None
+        ref_var_losses = ref_per_losses - np.expand_dims(ref_ori_losses, axis=-1) if cfg["calibration"] else None
 
         output = (Dict(
             per_losses=per_losses,
@@ -148,10 +159,10 @@ class AttackModel:
         # mem_info = info_dict.mem_feat
         # ref_mem_info = info_dict.ref_mem_feat
         if cfg["calibration"]:
-            mem_feat = info_dict.mem_feat.var_losses / info_dict.mem_feat.ori_losses\
-                       - info_dict.ref_mem_feat.ref_var_losses / info_dict.ref_mem_feat.ref_ori_losses
-            nonmem_feat = info_dict.nonmem_feat.var_losses / info_dict.nonmem_feat.ori_losses\
-                       - info_dict.ref_nonmem_feat.ref_var_losses / info_dict.ref_nonmem_feat.ref_ori_losses
+            mem_feat = info_dict.mem_feat.var_losses / np.expand_dims(info_dict.mem_feat.ori_losses, -1)\
+                       - info_dict.ref_mem_feat.ref_var_losses / np.expand_dims(info_dict.ref_mem_feat.ref_ori_losses, -1)
+            nonmem_feat = info_dict.nonmem_feat.var_losses / np.expand_dims(info_dict.nonmem_feat.ori_losses, -1)\
+                       - info_dict.ref_nonmem_feat.ref_var_losses / np.expand_dims(info_dict.ref_nonmem_feat.ref_ori_losses, -1)
             # gen_feat = info_dict.gen_feat.var_losses / info_dict.gen_feat.ori_losses[:, :, None] \
             #               - info_dict.ref_gen_feat.ref_var_losses / info_dict.ref_gen_feat.ref_ori_losses[:, :, None]
         else:
@@ -164,6 +175,8 @@ class AttackModel:
             # gen_feat = gen_feat[:, 2, :]
 
         if cfg["attack_kind"] == "stat":
+            mem_feat = mem_feat[:, :, 7]
+            nonmem_feat = nonmem_feat[:, :, 7]
             mem_feat[np.isnan(mem_feat)] = 0
             nonmem_feat[np.isnan(nonmem_feat)] = 0
             # feat = np.concatenate([info_dict.mem_feat.ori_losses - info_dict.ref_mem_feat.ref_ori_losses, info_dict.nonmem_feat.ori_losses - info_dict.ref_nonmem_feat.ref_ori_losses])
@@ -331,6 +344,48 @@ class AttackModel:
             new_perturbed_texts = self.apply_extracted_fills(masked_texts, extracted_fills)
             for idx, x in zip(idxs, new_perturbed_texts):
                 perturbed_texts[idx] = x
+            attempts += 1
+        return perturbed_texts
+
+    def mask_idx(self, text, span_length, idx_rate):
+        cfg = self.cfg
+        tokens = text.split(' ')
+        mask_string = '<<<mask>>>'
+
+        start = int((len(tokens) - span_length) * idx_rate)
+        end = start + span_length
+        search_start = max(0, start - cfg.buffer_size)
+        search_end = min(len(tokens), end + cfg.buffer_size)
+        if mask_string not in tokens[search_start:search_end]:
+            tokens[start:end] = [mask_string]
+
+        # replace each occurrence of mask_string with <extra_id_NUM>, where NUM increments
+        num_filled = 0
+        for idx_rate, token in enumerate(tokens):
+            if token == mask_string:
+                tokens[idx_rate] = f'<extra_id_{num_filled}>'
+                num_filled += 1
+        text = ' '.join(tokens)
+        return text
+
+    def sentence_idx_perturbation(self, texts, idx_rate):
+        cfg = self.cfg
+        masked_texts = [self.mask_idx(x, cfg.span_length, idx_rate) for x in texts]
+        raw_fills = self.replace_masks(masked_texts)
+        extracted_fills = self.extract_fills(raw_fills)
+        perturbed_texts = self.apply_extracted_fills(masked_texts, extracted_fills)
+
+        # Handle the fact that sometimes the model doesn't generate the right number of fills and we have to try again
+        attempts = 1
+        while '' in perturbed_texts:
+            idxs = [idx for idx, x in enumerate(perturbed_texts) if x == '']
+            print(f'WARNING: {len(idxs)} texts have no fills. Trying again [attempt {attempts}].')
+            masked_texts = [self.mask_idx(x, cfg.span_length, idx_rate) for idx, x in enumerate(texts) if idx in idxs]
+            raw_fills = self.replace_masks(masked_texts)
+            extracted_fills = self.extract_fills(raw_fills)
+            new_perturbed_texts = self.apply_extracted_fills(masked_texts, extracted_fills)
+            for idx_rate, x in zip(idxs, new_perturbed_texts):
+                perturbed_texts[idx_rate] = x
             attempts += 1
         return perturbed_texts
 
