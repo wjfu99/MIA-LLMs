@@ -41,12 +41,17 @@ class AttackModel:
         if reference_model is not None:
             self.reference_model = reference_model
 
-    def llm_eval(self, model, data_loader, cfg, perturb_fn=None, refer_model=None):
+    def llm_eval(self, model, data_loader, cfg, idx_rate, perturb_fn=None, refer_model=None):
         model.eval()
         losses = []
         ref_losses = []
         for iteration, texts in enumerate(data_loader):
             texts = texts["text"]
+            input_ids = self.tokenizer(texts)['input_ids'][0] # TODO: this only works when batch size is set to 1.
+            eos = int((len(input_ids)) * idx_rate)
+            input_ids = input_ids[:eos]
+            texts = self.tokenizer.decode(input_ids)
+            texts = [texts]
             if cfg["maximum_samples"] is not None:
                 if iteration * accelerator.num_processes >= cfg["maximum_samples"]:
                     break
@@ -75,17 +80,21 @@ class AttackModel:
         """
         per_losses = []
         ref_per_losses = []
+        ori_losses = []
+        ref_ori_losses = []
         ori_dataset = deepcopy(dataset)
         # TODO: the argument calibration is not work.
-        ori_losses, ref_ori_losses = self.llm_eval(model, ori_dataset, cfg, refer_model=self.reference_model)
         strength = np.linspace(cfg['start_strength'], cfg['end_strength'], cfg['perturbation_number'])
-        for i in tqdm(range(cfg["perturbation_number"])):
-            idx_rate = i / cfg["perturbation_number"]
+        for i in tqdm(range(4, cfg["perturbation_number"])):
+            idx_rate = (i+1) / cfg["perturbation_number"]
+            ori_loss, ref_ori_loss = self.llm_eval(model, ori_dataset, cfg, idx_rate, refer_model=self.reference_model)
+            ori_losses.append(ori_loss)
+            ref_ori_losses.append(ref_ori_loss)
             perturb_fn = partial(self.sentence_idx_perturbation, idx_rate=idx_rate)
             sampled_per_losses = []
             sampled_ref_per_losses = []
             for _ in range(cfg["sample_number"]):
-                per_loss, ref_per_loss = self.llm_eval(model, ori_dataset, cfg, perturb_fn=perturb_fn, refer_model=self.reference_model)
+                per_loss, ref_per_loss = self.llm_eval(model, ori_dataset, cfg, idx_rate, perturb_fn=perturb_fn, refer_model=self.reference_model)
                 sampled_per_losses.append(per_loss)
                 sampled_ref_per_losses.append(ref_per_loss)
             sampled_per_losses = np.concatenate(sampled_per_losses, axis=-1)
@@ -368,9 +377,18 @@ class AttackModel:
         text = ' '.join(tokens)
         return text
 
+    def mask_tokens(self, text, span_length):
+        mask_string = '<extra_id_0>'
+        input_ids = self.tokenizer.encode(text)
+        input_ids = input_ids[:len(input_ids)-span_length]
+        text = self.tokenizer.decode(input_ids)
+        text = ' '.join([text, mask_string])
+
+        return text
+
     def sentence_idx_perturbation(self, texts, idx_rate):
         cfg = self.cfg
-        masked_texts = [self.mask_idx(x, cfg.span_length, idx_rate) for x in texts]
+        masked_texts = [self.mask_tokens(x, cfg.span_length) for x in texts]
         raw_fills = self.replace_masks(masked_texts)
         extracted_fills = self.extract_fills(raw_fills)
         perturbed_texts = self.apply_extracted_fills(masked_texts, extracted_fills)
@@ -380,7 +398,7 @@ class AttackModel:
         while '' in perturbed_texts:
             idxs = [idx for idx, x in enumerate(perturbed_texts) if x == '']
             print(f'WARNING: {len(idxs)} texts have no fills. Trying again [attempt {attempts}].')
-            masked_texts = [self.mask_idx(x, cfg.span_length, idx_rate) for idx, x in enumerate(texts) if idx in idxs]
+            masked_texts = [self.mask_tokens(x, cfg.span_length) for idx, x in enumerate(texts) if idx in idxs]
             raw_fills = self.replace_masks(masked_texts)
             extracted_fills = self.extract_fills(raw_fills)
             new_perturbed_texts = self.apply_extracted_fills(masked_texts, extracted_fills)
