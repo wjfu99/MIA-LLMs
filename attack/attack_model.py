@@ -46,8 +46,8 @@ class AttackModel:
         losses = []
         ref_losses = []
         for iteration, texts in enumerate(data_loader):
-            texts = texts["text"]
-            input_ids = self.tokenizer(texts)['input_ids'][0] # TODO: this only works when batch size is set to 1.
+            ori_texts = texts["text"]
+            input_ids = self.tokenizer(ori_texts)['input_ids'][0] # TODO: this only works when batch size is set to 1.
             eos = int((len(input_ids)) * idx_rate)
             input_ids = input_ids[:eos]
             texts = self.tokenizer.decode(input_ids)
@@ -56,7 +56,7 @@ class AttackModel:
                 if iteration * accelerator.num_processes >= cfg["maximum_samples"]:
                     break
             if perturb_fn is not None:
-                texts = perturb_fn(texts)
+                texts = perturb_fn(ori_texts)
             token_ids = self.tokenizer(texts, return_tensors="pt", padding=True).to(accelerator.device)
             labels = token_ids.input_ids
             outputs = model(**token_ids, labels=labels)
@@ -85,7 +85,7 @@ class AttackModel:
         ori_dataset = deepcopy(dataset)
         # TODO: the argument calibration is not work.
         strength = np.linspace(cfg['start_strength'], cfg['end_strength'], cfg['perturbation_number'])
-        for i in tqdm(range(4, cfg["perturbation_number"])):
+        for i in tqdm(range(4, cfg["perturbation_number"]-1)):
             idx_rate = (i+1) / cfg["perturbation_number"]
             ori_loss, ref_ori_loss = self.llm_eval(model, ori_dataset, cfg, idx_rate, refer_model=self.reference_model)
             ori_losses.append(ori_loss)
@@ -101,10 +101,12 @@ class AttackModel:
             sampled_ref_per_losses = np.concatenate(sampled_ref_per_losses, axis=-1)
             per_losses.append(np.expand_dims(sampled_per_losses, axis=-1))
             ref_per_losses.append(np.expand_dims(sampled_ref_per_losses, axis=-1))
+        ori_losses = np.concatenate(ori_losses, axis=-1)
+        ref_ori_losses = np.concatenate(ref_ori_losses, axis=-1)
         per_losses = np.concatenate(per_losses, axis=-1)
-        var_losses = per_losses - np.expand_dims(ori_losses, axis=-1)
+        var_losses = per_losses - np.expand_dims(ori_losses, axis=-2)
         ref_per_losses = np.concatenate(ref_per_losses, axis=-1) if cfg["calibration"] else None
-        ref_var_losses = ref_per_losses - np.expand_dims(ref_ori_losses, axis=-1) if cfg["calibration"] else None
+        ref_var_losses = ref_per_losses - np.expand_dims(ref_ori_losses, axis=-2) if cfg["calibration"] else None
 
         output = (Dict(
             per_losses=per_losses,
@@ -168,10 +170,10 @@ class AttackModel:
         # mem_info = info_dict.mem_feat
         # ref_mem_info = info_dict.ref_mem_feat
         if cfg["calibration"]:
-            mem_feat = info_dict.mem_feat.var_losses / np.expand_dims(info_dict.mem_feat.ori_losses, -1)\
-                       - info_dict.ref_mem_feat.ref_var_losses / np.expand_dims(info_dict.ref_mem_feat.ref_ori_losses, -1)
-            nonmem_feat = info_dict.nonmem_feat.var_losses / np.expand_dims(info_dict.nonmem_feat.ori_losses, -1)\
-                       - info_dict.ref_nonmem_feat.ref_var_losses / np.expand_dims(info_dict.ref_nonmem_feat.ref_ori_losses, -1)
+            mem_feat = info_dict.mem_feat.var_losses / np.expand_dims(info_dict.mem_feat.ori_losses, -2)\
+                       - info_dict.ref_mem_feat.ref_var_losses / np.expand_dims(info_dict.ref_mem_feat.ref_ori_losses, -2)
+            nonmem_feat = info_dict.nonmem_feat.var_losses / np.expand_dims(info_dict.nonmem_feat.ori_losses, -2)\
+                       - info_dict.ref_nonmem_feat.ref_var_losses / np.expand_dims(info_dict.ref_nonmem_feat.ref_ori_losses, -2)
             # gen_feat = info_dict.gen_feat.var_losses / info_dict.gen_feat.ori_losses[:, :, None] \
             #               - info_dict.ref_gen_feat.ref_var_losses / info_dict.ref_gen_feat.ref_ori_losses[:, :, None]
         else:
@@ -317,6 +319,26 @@ class AttackModel:
 
         return extracted_fills
 
+    def apply_extracted_fills_(self, masked_texts, extracted_fills):
+        # split masked text into tokens, only splitting on spaces (not newlines)
+        tokens = [x.split(' ') for x in masked_texts]
+
+        n_expected = self.count_masks(masked_texts)
+
+        # replace each mask token with the corresponding fill
+        for idx, (text, fills, n) in enumerate(zip(tokens, extracted_fills, n_expected)):
+            if len(fills) < n:
+                tokens[idx] = []
+            else:
+                for fill_idx in range(n):
+                    text = text[:text.index(f"<extra_id_{fill_idx}>")+1]
+                    text[text.index(f"<extra_id_{fill_idx}>")] = fills[fill_idx]
+                    tokens[idx] = text
+
+        # join tokens back into text
+        texts = [" ".join(x) for x in tokens]
+        return texts
+
     def apply_extracted_fills(self, masked_texts, extracted_fills):
         # split masked text into tokens, only splitting on spaces (not newlines)
         tokens = [x.split(' ') for x in masked_texts]
@@ -377,31 +399,34 @@ class AttackModel:
         text = ' '.join(tokens)
         return text
 
-    def mask_tokens(self, text, span_length):
+    def mask_tokens(self, text, span_length, idx_rate):
         mask_string = '<extra_id_0>'
         input_ids = self.tokenizer.encode(text)
-        input_ids = input_ids[:len(input_ids)-span_length]
-        text = self.tokenizer.decode(input_ids)
-        text = ' '.join([text, mask_string])
+        eos = int((len(input_ids)) * idx_rate)
+        input_ids1 = input_ids[:eos-span_length]
+        input_ids2 = input_ids[eos:]
+        text1 = self.tokenizer.decode(input_ids1)
+        text2 = self.tokenizer.decode(input_ids2)
+        text = ' '.join([text1, mask_string, text2])
 
         return text
 
     def sentence_idx_perturbation(self, texts, idx_rate):
         cfg = self.cfg
-        masked_texts = [self.mask_tokens(x, cfg.span_length) for x in texts]
+        masked_texts = [self.mask_tokens(x, cfg.span_length, idx_rate) for x in texts]
         raw_fills = self.replace_masks(masked_texts)
         extracted_fills = self.extract_fills(raw_fills)
-        perturbed_texts = self.apply_extracted_fills(masked_texts, extracted_fills)
+        perturbed_texts = self.apply_extracted_fills_(masked_texts, extracted_fills)
 
         # Handle the fact that sometimes the model doesn't generate the right number of fills and we have to try again
         attempts = 1
         while '' in perturbed_texts:
             idxs = [idx for idx, x in enumerate(perturbed_texts) if x == '']
             print(f'WARNING: {len(idxs)} texts have no fills. Trying again [attempt {attempts}].')
-            masked_texts = [self.mask_tokens(x, cfg.span_length) for idx, x in enumerate(texts) if idx in idxs]
+            masked_texts = [self.mask_tokens(x, cfg.span_length, idx_rate) for idx, x in enumerate(texts) if idx in idxs]
             raw_fills = self.replace_masks(masked_texts)
             extracted_fills = self.extract_fills(raw_fills)
-            new_perturbed_texts = self.apply_extracted_fills(masked_texts, extracted_fills)
+            new_perturbed_texts = self.apply_extracted_fills_(masked_texts, extracted_fills)
             for idx_rate, x in zip(idxs, new_perturbed_texts):
                 perturbed_texts[idx_rate] = x
             attempts += 1
