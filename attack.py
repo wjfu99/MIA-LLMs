@@ -18,8 +18,8 @@ from accelerate.logging import get_logger
 import trl
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2SeqLM, BitsAndBytesConfig, TrainingArguments, AutoConfig
 
-os.environ['HTTP_PROXY'] = 'http://115.156.158.36:7890'
-os.environ['HTTPS_PROXY'] = 'http://115.156.158.36:7890'
+os.environ['HTTP_PROXY'] = 'http://fuwenjie:19990621f@localhost:7890'
+os.environ['HTTPS_PROXY'] = 'http://fuwenjie:19990621f@localhost:7890'
 
 # Load config file
 with open("configs/config.yaml", 'r') as f:

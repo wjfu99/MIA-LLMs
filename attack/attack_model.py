@@ -45,6 +45,7 @@ class AttackModel:
         model.eval()
         losses = []
         ref_losses = []
+        token_lens = []
         for iteration, texts in enumerate(data_loader):
             ori_texts = texts["text"]
             input_ids = self.tokenizer(ori_texts)['input_ids'][0] # TODO: this only works when batch size is set to 1.
@@ -63,13 +64,16 @@ class AttackModel:
             ref_outputs = refer_model(**token_ids, labels=labels)
             loss = outputs.loss
             ref_loss = ref_outputs.loss
+            token_lens.append(accelerator.gather(torch.tensor(token_ids.input_ids.size()[-1]).reshape(-1, 1).to(accelerator.device)).detach().cpu().numpy()) # TODO: may cause bug when running attacks in paralell.
             losses.append(accelerator.gather(loss.reshape(-1, 1)).detach().cpu().to(torch.float32).numpy())
             ref_losses.append(accelerator.gather(ref_loss.reshape(-1, 1)).detach().cpu().to(torch.float32).numpy())
             # print(f"{accelerator.device}@{texts}")
             # print(f"time duration: {time.time() - start_time}s")
         losses = np.concatenate(losses, axis=0)
         ref_losses = np.concatenate(ref_losses, axis=0)
-        return losses, ref_losses
+        token_lens = np.concatenate(token_lens, axis=0)
+        # token_lens = np.array(token_lens, dtype=np.int32)
+        return losses, ref_losses, token_lens
 
     def eval_perturb(self, model, dataset, cfg):
         """
@@ -80,43 +84,65 @@ class AttackModel:
         """
         per_losses = []
         ref_per_losses = []
+        per_token_lens = []
         ori_losses = []
         ref_ori_losses = []
+        ori_token_lens = []
         ori_dataset = deepcopy(dataset)
         # TODO: the argument calibration is not work.
         strength = np.linspace(cfg['start_strength'], cfg['end_strength'], cfg['perturbation_number'])
         for i in tqdm(range(4, cfg["perturbation_number"]-1)):
             idx_rate = (i+1) / cfg["perturbation_number"]
-            ori_loss, ref_ori_loss = self.llm_eval(model, ori_dataset, cfg, idx_rate, refer_model=self.reference_model)
+            ori_loss, ref_ori_loss, ori_token_len = self.llm_eval(model, ori_dataset, cfg, idx_rate, refer_model=self.reference_model)
             ori_losses.append(ori_loss)
             ref_ori_losses.append(ref_ori_loss)
+            ori_token_lens.append(ori_token_len)
             perturb_fn = partial(self.sentence_idx_perturbation, idx_rate=idx_rate)
             sampled_per_losses = []
             sampled_ref_per_losses = []
+            sampled_per_token_lens = []
             for _ in range(cfg["sample_number"]):
-                per_loss, ref_per_loss = self.llm_eval(model, ori_dataset, cfg, idx_rate, perturb_fn=perturb_fn, refer_model=self.reference_model)
+                per_loss, ref_per_loss, per_token_len = self.llm_eval(model, ori_dataset, cfg, idx_rate, perturb_fn=perturb_fn, refer_model=self.reference_model)
                 sampled_per_losses.append(per_loss)
                 sampled_ref_per_losses.append(ref_per_loss)
+                sampled_per_token_lens.append(per_token_len)
             sampled_per_losses = np.concatenate(sampled_per_losses, axis=-1)
             sampled_ref_per_losses = np.concatenate(sampled_ref_per_losses, axis=-1)
+            sampled_per_token_lens = np.concatenate(sampled_per_token_lens, axis=-1)
             per_losses.append(np.expand_dims(sampled_per_losses, axis=-1))
             ref_per_losses.append(np.expand_dims(sampled_ref_per_losses, axis=-1))
+            per_token_lens.append(np.expand_dims(sampled_per_token_lens, axis=-1))
         ori_losses = np.concatenate(ori_losses, axis=-1)
         ref_ori_losses = np.concatenate(ref_ori_losses, axis=-1)
+        ori_token_lens = np.concatenate(ori_token_lens, axis=-1)
+        unnorm_ori_losses = (ori_token_lens - 1) * ori_losses
+        unnorm_ref_ori_losses = (ori_token_lens - 1) * ref_ori_losses
+        per_token_lens = np.concatenate(per_token_lens, axis=-1)
         per_losses = np.concatenate(per_losses, axis=-1)
+        unnorm_per_losses = (per_token_lens - 1) * per_losses
         var_losses = per_losses - np.expand_dims(ori_losses, axis=-2)
+        unnorm_var_losses = unnorm_per_losses - np.expand_dims(unnorm_ori_losses, axis=-2)
         ref_per_losses = np.concatenate(ref_per_losses, axis=-1) if cfg["calibration"] else None
+        unnorm_ref_per_losses = (per_token_lens - 1) * ref_per_losses
         ref_var_losses = ref_per_losses - np.expand_dims(ref_ori_losses, axis=-2) if cfg["calibration"] else None
+        unnorm_ref_var_losses = unnorm_ref_per_losses - np.expand_dims(unnorm_ref_ori_losses, axis=-2)
+
 
         output = (Dict(
             per_losses=per_losses,
             ori_losses=ori_losses,
             var_losses=var_losses,
+            unnorm_ori_losses=unnorm_ori_losses,
+            unnorm_per_losses=unnorm_per_losses,
+            unnorm_var_losses=unnorm_var_losses
         ),
         Dict(
             ref_per_losses=ref_per_losses,
             ref_ori_losses=ref_ori_losses,
             ref_var_losses=ref_var_losses,
+            unnorm_ref_ori_losses=unnorm_ref_ori_losses,
+            unnorm_ref_per_losses=unnorm_ref_per_losses,
+            unnorm_ref_var_losses=unnorm_ref_var_losses
         ))
         return output
 
