@@ -64,8 +64,9 @@ if not cfg["load_attack_data"]:
                                                         torch_dtype=torch_dtype,
                                                         local_files_only=True,
                                                         config=config).to(accelerator.device)
-    reference_model = AutoModelForCausalLM.from_pretrained(cfg["model_name"], quantization_config=bnb_config,
+    reference_model = AutoModelForCausalLM.from_pretrained(cfg["reference_model"], quantization_config=bnb_config,
                                                            torch_dtype=torch_dtype,
+                                                           local_files_only=True,
                                                            config=config).to(accelerator.device)
 
     logger.info("Successfully load models")
@@ -84,6 +85,8 @@ if not cfg["load_attack_data"]:
 
     # Load datasets
     train_dataset, valid_dataset = dataset_prepare(cfg, tokenizer=tokenizer)
+    train_dataset = Dataset.from_dict(train_dataset[cfg.train_sta_idx:cfg.train_end_idx])
+    valid_dataset = Dataset.from_dict(valid_dataset[cfg.eval_sta_idx:cfg.eval_end_idx])
     logger.info("Successfully load datasets!")
 
     # Prepare dataloade

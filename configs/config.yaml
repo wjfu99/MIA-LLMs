@@ -2,8 +2,8 @@ tensorboard: True
 random_seed: 48
 
 model_name: gpt2
-target_model: ./ft_llms/new_check/checkpoint-720 # valid model:
-reference_model: #
+target_model: ./ft_llms/target_model/checkpoint-1005 # valid model:
+reference_model: ./ft_llms/reference_model/checkpoint-1005 #
 dataset_name: wikitext # valid dataset:
 dataset_config_name: wikitext-2-raw-v1
 cache_path: ./cache
@@ -27,6 +27,11 @@ int8: false
 half: false
 perturbation_number: 10 # the number of different perturbation strength / position
 sample_number: 6 # the number of samples for each data group
+
+train_sta_idx: 0
+train_end_idx: 6000
+eval_sta_idx: 0
+eval_end_idx: 600
 
 loss_kind: ddpm # valid loss estimation methods: ddpm, ddim
 time_step: 10
