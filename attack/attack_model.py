@@ -47,17 +47,12 @@ class AttackModel:
         ref_losses = []
         token_lens = []
         for iteration, texts in enumerate(data_loader):
-            ori_texts = texts["text"]
-            input_ids = self.tokenizer(ori_texts)['input_ids'][0] # TODO: this only works when batch size is set to 1.
-            eos = int((len(input_ids)) * idx_rate)
-            input_ids = input_ids[:eos]
-            texts = self.tokenizer.decode(input_ids)
-            texts = [texts]
+            texts = texts["text"]
             if cfg["maximum_samples"] is not None:
                 if iteration * accelerator.num_processes >= cfg["maximum_samples"]:
                     break
             if perturb_fn is not None:
-                texts = perturb_fn(ori_texts)
+                texts = perturb_fn(texts)
             token_ids = self.tokenizer(texts, return_tensors="pt", padding=True).to(accelerator.device)
             labels = token_ids.input_ids
             outputs = model(**token_ids, labels=labels)
@@ -91,13 +86,13 @@ class AttackModel:
         ori_dataset = deepcopy(dataset)
         # TODO: the argument calibration is not work.
         strength = np.linspace(cfg['start_strength'], cfg['end_strength'], cfg['perturbation_number'])
-        for i in tqdm(range(4, cfg["perturbation_number"]-1)):
-            idx_rate = (i+1) / cfg["perturbation_number"]
+        for i in tqdm(range(0, cfg["perturbation_number"])):
+            idx_rate = i / cfg["perturbation_number"] * 0.7
             ori_loss, ref_ori_loss, ori_token_len = self.llm_eval(model, ori_dataset, cfg, idx_rate, refer_model=self.reference_model)
             ori_losses.append(ori_loss)
             ref_ori_losses.append(ref_ori_loss)
             ori_token_lens.append(ori_token_len)
-            perturb_fn = partial(self.sentence_idx_perturbation, idx_rate=idx_rate)
+            perturb_fn = partial(self.sentence_perturbation, idx_rate=idx_rate)
             sampled_per_losses = []
             sampled_ref_per_losses = []
             sampled_per_token_lens = []
@@ -285,10 +280,11 @@ class AttackModel:
     #                 "labels": perturb_ids
     #             }
 
-    def tokenize_and_mask(self, text, span_length, pct, ceil_pct=False):
+    def tokenize_and_mask(self, text, span_length, pct, idx_rate, ceil_pct=False):
         cfg = self.cfg
         tokens = text.split(' ')
         mask_string = '<<<mask>>>'
+        perturb_start_idx = int(len(tokens) * idx_rate)
 
         n_spans = pct * len(tokens) / (span_length + cfg.buffer_size * 2)
         if ceil_pct:
@@ -297,7 +293,7 @@ class AttackModel:
 
         n_masks = 0
         while n_masks < n_spans:
-            start = np.random.randint(0, len(tokens) - span_length)
+            start = np.random.randint(perturb_start_idx, len(tokens) - span_length)
             end = start + span_length
             search_start = max(0, start - cfg.buffer_size)
             search_end = min(len(tokens), end + cfg.buffer_size)
@@ -383,9 +379,9 @@ class AttackModel:
         texts = [" ".join(x) for x in tokens]
         return texts
 
-    def sentence_perturbation(self, texts):
+    def sentence_perturbation(self, texts, idx_rate):
         cfg = self.cfg
-        masked_texts = [self.tokenize_and_mask(x, cfg.span_length, cfg.pct, cfg.ceil_pct) for x in texts]
+        masked_texts = [self.tokenize_and_mask(x, cfg.span_length, cfg.pct, idx_rate, cfg.ceil_pct) for x in texts]
         raw_fills = self.replace_masks(masked_texts)
         extracted_fills = self.extract_fills(raw_fills)
         perturbed_texts = self.apply_extracted_fills(masked_texts, extracted_fills)
@@ -395,7 +391,7 @@ class AttackModel:
         while '' in perturbed_texts:
             idxs = [idx for idx, x in enumerate(perturbed_texts) if x == '']
             print(f'WARNING: {len(idxs)} texts have no fills. Trying again [attempt {attempts}].')
-            masked_texts = [self.tokenize_and_mask(x, cfg.span_length, cfg.pct, cfg.ceil_pct) for idx, x in enumerate(texts) if idx in idxs]
+            masked_texts = [self.tokenize_and_mask(x, cfg.span_length, cfg.pct, idx_rate, cfg.ceil_pct) for idx, x in enumerate(texts) if idx in idxs]
             raw_fills = self.replace_masks(masked_texts)
             extracted_fills = self.extract_fills(raw_fills)
             new_perturbed_texts = self.apply_extracted_fills(masked_texts, extracted_fills)
