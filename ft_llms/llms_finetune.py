@@ -57,6 +57,11 @@ if __name__ == "__main__":
     parser.add_argument("--gradient_checkpointing", action="store_true", default=False)
     parser.add_argument("--trust_remote_code", action="store_true", default=False)
 
+    parser.add_argument("--train_sta_idx", type=int, default=0)
+    parser.add_argument("--train_end_idx", type=int, default=6000)
+    parser.add_argument("--eval_sta_idx", type=int, default=0)
+    parser.add_argument("--eval_end_idx", type=int, default=600)
+
     parser.add_argument("-s", "--save_limit", type=int, default=None)
 
     parser.add_argument("--use_int4", action="store_true", default=False)
@@ -176,6 +181,8 @@ if __name__ == "__main__":
 
     with accelerator.main_process_first():
         train_dataset, valid_dataset = dataset_prepare(args, tokenizer=tokenizer)
+        train_dataset = Dataset.from_dict(train_dataset[args.train_sta_idx:args.train_end_idx])
+        valid_dataset = Dataset.from_dict(valid_dataset[args.eval_sta_idx:args.eval_end_idx])
 
     logger.info(f"Training with {Accelerator().num_processes} GPUs")
     training_args = TrainingArguments(
