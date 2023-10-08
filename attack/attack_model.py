@@ -159,15 +159,17 @@ class AttackModel:
 
             logger.info("Generating feature vectors for member data...")
             mem_feat, ref_mem_feat = self.eval_perturb(target_model, mem_data, cfg)
-            utils.save_dict_to_npz(mem_feat, mem_path)
-            if cfg["calibration"]:
-                utils.save_dict_to_npz(ref_mem_feat, ref_mem_path)
+            if accelerator.is_main_process:
+                utils.save_dict_to_npz(mem_feat, mem_path)
+                if cfg["calibration"]:
+                    utils.save_dict_to_npz(ref_mem_feat, ref_mem_path)
 
             logger.info("Generating feature vectors for non-member data...")
             nonmem_feat, ref_nonmem_feat = self.eval_perturb(target_model, nonmem_data, cfg)
-            utils.save_dict_to_npz(nonmem_feat, nonmem_path)
-            if cfg["calibration"]:
-                utils.save_dict_to_npz(ref_nonmem_feat, ref_nonmem_path)
+            if accelerator.is_main_process:
+                utils.save_dict_to_npz(nonmem_feat, nonmem_path)
+                if cfg["calibration"]:
+                    utils.save_dict_to_npz(ref_nonmem_feat, ref_nonmem_path)
 
             logger.info("Saving feature vectors...")
 
