@@ -5,7 +5,7 @@ import trl
 from trl import SFTTrainer
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig, TrainingArguments, AutoConfig
 from accelerate import Accelerator
-from datasets import Dataset
+from datasets import Dataset, load_from_disk
 import torch
 import logging
 import os
@@ -183,6 +183,7 @@ if __name__ == "__main__":
         train_dataset, valid_dataset = dataset_prepare(args, tokenizer=tokenizer)
         train_dataset = Dataset.from_dict(train_dataset[args.train_sta_idx:args.train_end_idx])
         valid_dataset = Dataset.from_dict(valid_dataset[args.eval_sta_idx:args.eval_end_idx])
+        train_dataset = load_from_disk("./cache/wikitext/refer_dataset")
 
     logger.info(f"Training with {Accelerator().num_processes} GPUs")
     training_args = TrainingArguments(
