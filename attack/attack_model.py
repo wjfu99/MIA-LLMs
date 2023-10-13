@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 import re
 import seaborn as sns
 from functools import partial
+import spacy
 
 logger = get_logger(__name__, "INFO")
 
@@ -41,6 +42,13 @@ class AttackModel:
         if reference_model is not None:
             self.reference_model = reference_model
 
+    def get_raw_loss(self, outputs, labels):
+        loss_fn = torch.nn.CrossEntropyLoss(reduction="none")
+        shift_logits = outputs.logits[..., :-1, :].contiguous()
+        shift_labels = labels[..., 1:].contiguous()
+        loss = loss_fn(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+        loss = loss.detach().cpu().to(torch.float32).numpy()
+        return loss
     def llm_eval(self, model, data_loader, cfg, idx_rate, perturb_fn=None, refer_model=None):
         model.eval()
         losses = []
@@ -313,6 +321,36 @@ class AttackModel:
         text = ' '.join(tokens)
         return text
 
+    def mask_noun(self, text, pct, ceil_pct=False):
+        cfg = self.cfg
+        # tokens = text.split(' ')
+        sp = spacy.load('en_core_web_sm')
+        doc = sp(text)
+        mask_string = '<<<mask>>>'
+
+        n_spans = pct * len(doc) / (cfg.buffer_size * 2)
+        if ceil_pct:
+            n_spans = np.ceil(n_spans)
+        n_spans = int(n_spans)
+
+        n_masks = 0
+
+        # replace each occurrence of mask_string with <extra_id_NUM>, where NUM increments
+        num_filled = 0
+        tokens = []
+        for idx, token in enumerate(doc):
+            if len(tokens) > 0:
+                if token.pos_ in ['NOUN', "PROPN"] and f'<extra_id_{num_filled-1}>' not in tokens[-cfg.buffer_size:]:
+                    tokens.append(f'<extra_id_{num_filled}>')
+                    num_filled += 1
+                else:
+                    tokens.append(token.text)
+            else:
+                tokens.append(token.text)
+        # assert num_filled == n_masks, f"num_filled {num_filled} != n_masks {n_masks}"
+        text = ' '.join(tokens)
+        return text
+
     @staticmethod
     def count_masks(texts):
         return [len([x for x in text.split() if x.startswith("<extra_id_")]) for text in texts]
@@ -383,7 +421,10 @@ class AttackModel:
 
     def sentence_perturbation(self, texts, idx_rate):
         cfg = self.cfg
-        masked_texts = [self.tokenize_and_mask(x, cfg.span_length, cfg.pct, idx_rate, cfg.ceil_pct) for x in texts]
+        if cfg.only_noun:
+            masked_texts = [self.mask_noun(x, cfg.pct) for x in texts]
+        else:
+            masked_texts = [self.tokenize_and_mask(x, cfg.span_length, cfg.pct, idx_rate, cfg.ceil_pct) for x in texts]
         raw_fills = self.replace_masks(masked_texts)
         extracted_fills = self.extract_fills(raw_fills)
         perturbed_texts = self.apply_extracted_fills(masked_texts, extracted_fills)
@@ -393,7 +434,10 @@ class AttackModel:
         while '' in perturbed_texts:
             idxs = [idx for idx, x in enumerate(perturbed_texts) if x == '']
             print(f'WARNING: {len(idxs)} texts have no fills. Trying again [attempt {attempts}].')
-            masked_texts = [self.tokenize_and_mask(x, cfg.span_length, cfg.pct, idx_rate, cfg.ceil_pct) for idx, x in enumerate(texts) if idx in idxs]
+            if cfg.only_noun:
+                masked_texts = [self.mask_noun(x, cfg.pct) for idx, x in enumerate(texts) if idx in idxs]
+            else:
+                masked_texts = [self.tokenize_and_mask(x, cfg.span_length, cfg.pct, idx_rate, cfg.ceil_pct) for idx, x in enumerate(texts) if idx in idxs]
             raw_fills = self.replace_masks(masked_texts)
             extracted_fills = self.extract_fills(raw_fills)
             new_perturbed_texts = self.apply_extracted_fills(masked_texts, extracted_fills)

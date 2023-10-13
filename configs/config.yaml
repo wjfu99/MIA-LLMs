@@ -3,7 +3,7 @@ random_seed: 48
 
 model_name: gpt2
 target_model: ./ft_llms/target_model/checkpoint-1005 # valid model:
-reference_model: ./ft_llms/reference_model_v2/checkpoint-1005 #
+reference_model: gpt2 #
 dataset_name: wikitext # valid dataset:
 dataset_config_name: wikitext-2-raw-v1
 cache_path: ./cache
@@ -18,15 +18,16 @@ maximum_samples: 200 # the maximum samples number for member and non-member reco
 block_size: 1024
 preprocessing_num_workers: 1
 mask_filling_model_name: t5-small
-buffer_size: 1 # TODO: figure out how this parameter works.
+buffer_size: 4
 mask_top_p: 1.0
 span_length: 2
 pct: 0.3 # pct_words_masked
 ceil_pct: false
 int8: false
 half: false
-perturbation_number: 10 # the number of different perturbation strength / position
-sample_number: 6 # the number of samples for each data group
+perturbation_number: 1 # the number of different perturbation strength / position
+sample_number: 10 # the number of samples for each data group
+only_noun: true # only perturb nouns.
 
 train_sta_idx: 0
 train_end_idx: 6000
