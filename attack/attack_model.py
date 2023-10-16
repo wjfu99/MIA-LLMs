@@ -217,8 +217,8 @@ class AttackModel:
             # gen_feat = gen_feat[:, 2, :]
 
         if cfg["attack_kind"] == "stat":
-            mem_feat = mem_feat[:, :, 7]
-            nonmem_feat = nonmem_feat[:, :, 7]
+            mem_feat = mem_feat[:, :, 0]
+            nonmem_feat = nonmem_feat[:, :, 0]
             mem_feat[np.isnan(mem_feat)] = 0
             nonmem_feat[np.isnan(nonmem_feat)] = 0
             # feat = np.concatenate([info_dict.mem_feat.ori_losses - info_dict.ref_mem_feat.ref_ori_losses, info_dict.nonmem_feat.ori_losses - info_dict.ref_nonmem_feat.ref_ori_losses])
@@ -340,7 +340,8 @@ class AttackModel:
         tokens = []
         for idx, token in enumerate(doc):
             if len(tokens) > 0:
-                if token.pos_ in ['NOUN', "PROPN"] and f'<extra_id_{num_filled-1}>' not in tokens[-cfg.buffer_size:]:
+                if token.pos_ in ['NOUN', "PROPN"] and f'<extra_id_{num_filled-1}>' not in tokens[-cfg.buffer_size:] and random.random() < pct:
+                    print(f"{token.text}")
                     tokens.append(f'<extra_id_{num_filled}>')
                     num_filled += 1
                 else:
