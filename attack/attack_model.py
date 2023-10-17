@@ -209,8 +209,8 @@ class AttackModel:
             # gen_feat = gen_feat[:, 2, :]
 
         if cfg["attack_kind"] == "stat":
-            mem_feat = mem_feat[:, :, 7]
-            nonmem_feat = nonmem_feat[:, :, 7]
+            mem_feat = mem_feat[:, :, 0]
+            nonmem_feat = nonmem_feat[:, :, 0]
             mem_feat[np.isnan(mem_feat)] = 0
             nonmem_feat[np.isnan(nonmem_feat)] = 0
             # feat = np.concatenate([info_dict.mem_feat.ori_losses - info_dict.ref_mem_feat.ref_ori_losses, info_dict.nonmem_feat.ori_losses - info_dict.ref_nonmem_feat.ref_ori_losses])

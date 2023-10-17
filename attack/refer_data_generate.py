@@ -49,13 +49,15 @@ generated_dataset = {"text": []}
 for text in tqdm(prompt_dataloader):
     prompt = (text["text"])
     input_ids = tokenizer(prompt, return_tensors="pt").input_ids.to(device)
-    clipped_ids = input_ids[:, :20]
+    clipped_ids = input_ids[:, :16]
     gen_tokens = model.generate(
         clipped_ids,
+        num_beams=8,
         do_sample=True,
-        temperature=0.3,
+        # temperature=0.3,
         max_length=128,
     )
+    print(model(gen_tokens, labels=gen_tokens).loss)
     gen_text = tokenizer.batch_decode(gen_tokens)
     generated_dataset["text"].extend(gen_text)
 

@@ -32,7 +32,7 @@ if __name__ == "__main__":
     parser.add_argument("-m", "--model_name", type=str, default="meta-llama/Llama-2-7b-hf")
     parser.add_argument("-d", "--dataset_name", type=str, default="wikitext-2-raw-v1")
     parser.add_argument("-dc", "--dataset_config_name", type=str, default=None, help="The configuration name of the dataset to use (via the datasets library).")
-    parser.add_argument("--cache_path", type=str, default="../cache")
+    parser.add_argument("--cache_path", type=str, default="./cache")
     parser.add_argument("--use_dataset_cache", action="store_true", default=False)
     parser.add_argument("--packing", action="store_true", default=False)
     parser.add_argument("-t", "--token", type=str, default=None)
