@@ -17,6 +17,13 @@ accelerate launch ./ft_llms/llms_finetune.py \
 -e 200 -b 8 -lr 5e-5 --gradient_accumulation_steps 8 \
 --disable_lora --train_sta_idx=6000 --train_end_idx=12000 --eval_sta_idx=600 --eval_end_idx=1200
 
+accelerate launch ./ft_llms/llms_finetune.py \
+--output_dir ./ft_llms/target_model_gptj \
+--block_size 128 --eval_steps 20 --save_epochs 200 --log_steps 20 \
+-d wikitext -dc wikitext-2-raw-v1 -m EleutherAI/gpt-j-6B --packing --use_dataset_cache \
+-e 200 -b 8 -lr 1e-4 --gradient_accumulation_steps 8 \
+--train_sta_idx=0 --train_end_idx=6000 --eval_sta_idx=0 --eval_end_idx=600
+
 accelerate launch llms_finetune.py \
 --block_size 1024 --eval_steps 100 --save_steps 100 --log_steps 100 \
 -d wikitext -dc wikitext-2-raw-v1 -m gpt2 \

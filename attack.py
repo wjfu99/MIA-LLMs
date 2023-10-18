@@ -17,6 +17,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 import trl
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2SeqLM, BitsAndBytesConfig, TrainingArguments, AutoConfig
+from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training
 
 os.environ['HTTP_PROXY'] = 'http://fuwenjie:19990621f@localhost:7890'
 os.environ['HTTPS_PROXY'] = 'http://fuwenjie:19990621f@localhost:7890'
@@ -56,18 +57,18 @@ torch.backends.cudnn.deterministic = True
 
 ## Load generation models.
 if not cfg["load_attack_data"]:
-    config = AutoConfig.from_pretrained(cfg["model_name"])
-    config.use_cache = False
-    bnb_config = None
+    # config = AutoConfig.from_pretrained(cfg["model_name"])
+    # config.use_cache = False
     torch_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-    target_model = AutoModelForCausalLM.from_pretrained(cfg["target_model"], quantization_config=bnb_config,
+    target_model = AutoModelForCausalLM.from_pretrained(cfg["target_model"], quantization_config=BitsAndBytesConfig(load_in_8bit=True),
                                                         torch_dtype=torch_dtype,
                                                         local_files_only=True,
-                                                        config=config).to(accelerator.device)
-    reference_model = AutoModelForCausalLM.from_pretrained(cfg["reference_model"], quantization_config=bnb_config,
+                                                        config=AutoConfig.from_pretrained(cfg["model_name"]))
+    reference_model = AutoModelForCausalLM.from_pretrained(cfg["reference_model"], quantization_config=BitsAndBytesConfig(load_in_8bit=True),
                                                            torch_dtype=torch_dtype,
                                                            local_files_only=True,
-                                                           config=config).to(accelerator.device)
+                                                           config=AutoConfig.from_pretrained(cfg["model_name"]))
+
 
     logger.info("Successfully load models")
 

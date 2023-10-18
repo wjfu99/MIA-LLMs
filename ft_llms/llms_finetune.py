@@ -183,7 +183,7 @@ if __name__ == "__main__":
         train_dataset, valid_dataset = dataset_prepare(args, tokenizer=tokenizer)
         train_dataset = Dataset.from_dict(train_dataset[args.train_sta_idx:args.train_end_idx])
         valid_dataset = Dataset.from_dict(valid_dataset[args.eval_sta_idx:args.eval_end_idx])
-        train_dataset = load_from_disk("./cache/wikitext/refer_dataset")
+        # train_dataset = load_from_disk("./cache/wikitext/refer_dataset")
 
     logger.info(f"Training with {Accelerator().num_processes} GPUs")
     training_args = TrainingArguments(
@@ -192,7 +192,7 @@ if __name__ == "__main__":
         output_dir=args.output_dir,
         dataloader_drop_last=True,
         evaluation_strategy="steps",
-        save_strategy="epoch",
+        save_strategy="steps",
         logging_strategy="steps",
         num_train_epochs=args.epochs,
         eval_steps=args.eval_steps,

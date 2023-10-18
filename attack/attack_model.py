@@ -55,8 +55,9 @@ class AttackModel:
                 texts = perturb_fn(texts)
             token_ids = self.tokenizer(texts, return_tensors="pt", padding=True).to(accelerator.device)
             labels = token_ids.input_ids
-            outputs = model(**token_ids, labels=labels)
-            ref_outputs = refer_model(**token_ids, labels=labels)
+            with torch.no_grad():
+                outputs = model(**token_ids, labels=labels)
+                ref_outputs = refer_model(**token_ids, labels=labels)
             loss = outputs.loss
             ref_loss = ref_outputs.loss
             token_lens.append(accelerator.gather(torch.tensor(token_ids.input_ids.size()[-1]).reshape(-1, 1).to(accelerator.device)).detach().cpu().numpy()) # TODO: may cause bug when running attacks in paralell.
