@@ -3,7 +3,7 @@ random_seed: 48
 
 model_name: EleutherAI/gpt-j-6B
 target_model: ./ft_llms/target_model_gptj/checkpoint-400 # valid model:
-reference_model: ./ft_llms/pretrained_model_lora #
+reference_model: ./ft_llms/reference_model_gptj/checkpoint-400 #
 dataset_name: wikitext # valid dataset:
 dataset_config_name: wikitext-2-raw-v1
 cache_path: ./cache
