@@ -18,8 +18,8 @@ from data.prepare import dataset_prepare
 
 import os
 
-os.environ['HTTP_PROXY'] = 'http://115.156.158.36:7890'
-os.environ['HTTPS_PROXY'] = 'http://115.156.158.36:7890'
+os.environ['HTTP_PROXY'] = 'http://fuwenjie:19990621f@192.168.75.13:7890'
+os.environ['HTTPS_PROXY'] = 'http://fuwenjie:19990621f@192.168.75.13:7890'
 
 from utils import get_logger, constantlengthdatasetiter
 # trl.trainer.ConstantLengthDataset.__dict__["__iter__"] = constantlengthdatasetiter
@@ -83,7 +83,7 @@ if __name__ == "__main__":
     else:
         access_token = args.token
 
-    config = AutoConfig.from_pretrained(args.model_name)
+    config = AutoConfig.from_pretrained(args.model_name, cache_dir=args.cache_path)
 
     config.use_cache = False
     config_dict = config.to_dict()
@@ -112,7 +112,7 @@ if __name__ == "__main__":
         kwargs = {"device_map": None}
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, token=access_token,
-                                              trust_remote_code=args.trust_remote_code,
+                                              trust_remote_code=args.trust_remote_code, cache_dir=args.cache_path,
                                               add_eos_token=args.add_eos_token, add_bos_token=args.add_bos_token,
                                               use_fast=True)
     # THIS IS A HACK TO GET THE PAD TOKEN ID NOT TO BE EOS
@@ -155,8 +155,8 @@ if __name__ == "__main__":
 
     torch_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
     model = AutoModelForCausalLM.from_pretrained(args.model_name, token=access_token, quantization_config=bnb_config,
-                                                 trust_remote_code=args.trust_remote_code, torch_dtype=torch_dtype,
-                                                 config=config, **kwargs)
+                                                 trust_remote_code=args.trust_remote_code, cache_dir=args.cache_path,
+                                                 torch_dtype=torch_dtype, config=config, **kwargs)
 
     if use_flash_attention:
         from llama_patch import llama_forward_with_flash_attn
@@ -183,7 +183,7 @@ if __name__ == "__main__":
         train_dataset, valid_dataset = dataset_prepare(args, tokenizer=tokenizer)
         train_dataset = Dataset.from_dict(train_dataset[args.train_sta_idx:args.train_end_idx])
         valid_dataset = Dataset.from_dict(valid_dataset[args.eval_sta_idx:args.eval_end_idx])
-        train_dataset = load_from_disk("./cache/wikitext/refer_dataset_gptj")
+        # train_dataset = load_from_disk("./cache/wikitext/refer_dataset_gptj")
 
     logger.info(f"Training with {Accelerator().num_processes} GPUs")
     training_args = TrainingArguments(
