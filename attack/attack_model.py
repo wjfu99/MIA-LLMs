@@ -255,34 +255,6 @@ class AttackModel:
             # self.distinguishability_plot(feat[:1000], feat[-1000:])
             self.eval_attack(ground_truth, -feat, path=save_path)
 
-    # @staticmethod
-    # def sentence_perturbation(batch, tokenizer):
-    #
-    #     ### Demo
-    #     ids = batch["input_ids"][0]
-    #     text_list = []
-    #     ids_list = []
-    #     for _ in range(100):
-    #         text = tokenizer.decode(ids)
-    #         text_list.append(text)
-    #         ids = tokenizer(text, truncation=True)["input_ids"]
-    #         ids_list.append(ids)
-    #     # aug = naw.RandomWordAug(action="swap", aug_p=0.2)
-    #     # aug = naw.SynonymAug(aug_src="wordnet", aug_p=0)
-    #     # sentence = tokenizer.decode(batch["input_ids"][0])
-    #     # # perturb_sentence = aug.augment(sentence)
-    #     # perturb_sentence = sentence
-    #     # perturb_ids = tokenizer(perturb_sentence, truncation=True)["input_ids"]
-    #     perturb_ids = deepcopy(batch["input_ids"])
-    #     for i in range(batch["input_ids"].shape[1]):
-    #         if batch["input_ids"][0, i].item() != tokenizer.eos_token_id and random.random() < 0.01:
-    #             perturb_ids[0, i] = random.randint(0, 50255)
-    #
-    #     return {
-    #                 "input_ids": perturb_ids,
-    #                 "labels": perturb_ids
-    #             }
-
     def tokenize_and_mask(self, text, span_length, pct, idx_rate, ceil_pct=False):
         cfg = self.cfg
         tokens = text.split(' ')
@@ -344,26 +316,6 @@ class AttackModel:
 
         return extracted_fills
 
-    def apply_extracted_fills_(self, masked_texts, extracted_fills):
-        # split masked text into tokens, only splitting on spaces (not newlines)
-        tokens = [x.split(' ') for x in masked_texts]
-
-        n_expected = self.count_masks(masked_texts)
-
-        # replace each mask token with the corresponding fill
-        for idx, (text, fills, n) in enumerate(zip(tokens, extracted_fills, n_expected)):
-            if len(fills) < n:
-                tokens[idx] = []
-            else:
-                for fill_idx in range(n):
-                    text = text[:text.index(f"<extra_id_{fill_idx}>")+1]
-                    text[text.index(f"<extra_id_{fill_idx}>")] = fills[fill_idx]
-                    tokens[idx] = text
-
-        # join tokens back into text
-        texts = [" ".join(x) for x in tokens]
-        return texts
-
     def apply_extracted_fills(self, masked_texts, extracted_fills):
         # split masked text into tokens, only splitting on spaces (not newlines)
         tokens = [x.split(' ') for x in masked_texts]
@@ -400,60 +352,6 @@ class AttackModel:
             new_perturbed_texts = self.apply_extracted_fills(masked_texts, extracted_fills)
             for idx, x in zip(idxs, new_perturbed_texts):
                 perturbed_texts[idx] = x
-            attempts += 1
-        return perturbed_texts
-
-    def mask_idx(self, text, span_length, idx_rate):
-        cfg = self.cfg
-        tokens = text.split(' ')
-        mask_string = '<<<mask>>>'
-
-        start = int((len(tokens) - span_length) * idx_rate)
-        end = start + span_length
-        search_start = max(0, start - cfg.buffer_size)
-        search_end = min(len(tokens), end + cfg.buffer_size)
-        if mask_string not in tokens[search_start:search_end]:
-            tokens[start:end] = [mask_string]
-
-        # replace each occurrence of mask_string with <extra_id_NUM>, where NUM increments
-        num_filled = 0
-        for idx_rate, token in enumerate(tokens):
-            if token == mask_string:
-                tokens[idx_rate] = f'<extra_id_{num_filled}>'
-                num_filled += 1
-        text = ' '.join(tokens)
-        return text
-
-    def mask_tokens(self, text, span_length, idx_rate):
-        mask_string = '<extra_id_0>'
-        input_ids = self.tokenizer.encode(text)
-        eos = int((len(input_ids)) * idx_rate)
-        input_ids1 = input_ids[:eos-span_length]
-        input_ids2 = input_ids[eos:]
-        text1 = self.tokenizer.decode(input_ids1)
-        text2 = self.tokenizer.decode(input_ids2)
-        text = ' '.join([text1, mask_string, text2])
-
-        return text
-
-    def sentence_idx_perturbation(self, texts, idx_rate):
-        cfg = self.cfg
-        masked_texts = [self.mask_tokens(x, cfg.span_length, idx_rate) for x in texts]
-        raw_fills = self.replace_masks(masked_texts)
-        extracted_fills = self.extract_fills(raw_fills)
-        perturbed_texts = self.apply_extracted_fills_(masked_texts, extracted_fills)
-
-        # Handle the fact that sometimes the model doesn't generate the right number of fills and we have to try again
-        attempts = 1
-        while '' in perturbed_texts:
-            idxs = [idx for idx, x in enumerate(perturbed_texts) if x == '']
-            print(f'WARNING: {len(idxs)} texts have no fills. Trying again [attempt {attempts}].')
-            masked_texts = [self.mask_tokens(x, cfg.span_length, idx_rate) for idx, x in enumerate(texts) if idx in idxs]
-            raw_fills = self.replace_masks(masked_texts)
-            extracted_fills = self.extract_fills(raw_fills)
-            new_perturbed_texts = self.apply_extracted_fills_(masked_texts, extracted_fills)
-            for idx_rate, x in zip(idxs, new_perturbed_texts):
-                perturbed_texts[idx_rate] = x
             attempts += 1
         return perturbed_texts
 
