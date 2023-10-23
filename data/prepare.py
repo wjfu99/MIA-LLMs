@@ -7,6 +7,7 @@ from attack.utils import create_folder
 block_size = None
 tokenizer_ = None
 max_buff_size = None
+text_column = None
 
 def packing_texts(examples):
     more_examples = True
@@ -50,20 +51,33 @@ def packing_texts(examples):
     }
 def dataset_prepare(args, tokenizer=None, num_of_sequences=1024, chars_per_token=3.6):
     raw_datasets = datasets.load_dataset(args.dataset_name, args.dataset_config_name)
-    if "validation" in raw_datasets.keys():
-        train_dataset = raw_datasets["train"]
-        valid_dataset = raw_datasets["validation"]
-    else:
-        train_dataset = datasets.load_dataset(
-            args.dataset_name,
-            args.dataset_config_name,
-            split=f"train[:{args.validation_split_percentage}%]"
-        )
-        valid_dataset = datasets.load_dataset(
-            args.dataset_name,
-            args.dataset_config_name,
-            split=f"train[{args.validation_split_percentage}%:]",
-        )
+    # if "validation" in raw_datasets.keys():
+    #     train_dataset = raw_datasets["train"]
+    #     valid_dataset = raw_datasets["validation"]
+    # else:
+    train_dataset = datasets.load_dataset(
+        args.dataset_name,
+        args.dataset_config_name,
+        split=f"train[:{1-args.validation_split_percentage}%]"
+    )
+    valid_dataset = datasets.load_dataset(
+        args.dataset_name,
+        args.dataset_config_name,
+        split=f"train[{1-args.validation_split_percentage}%:]",
+    )
+
+    global text_column
+    column = train_dataset.column_names
+    if "text" in column:
+        text_column = "text"
+    elif "document" in column:
+        text_column = "document"
+
+    train_dataset = train_dataset.select_columns(text_column)
+    valid_dataset = valid_dataset.select_columns(text_column)
+    if text_column != "text":
+        train_dataset = train_dataset.rename_column(text_column, "text")
+        valid_dataset = valid_dataset.rename_column(text_column, "text")
 
     if args.packing:
         global block_size, tokenizer_, max_buff_size

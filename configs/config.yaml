@@ -4,8 +4,8 @@ random_seed: 48
 model_name: EleutherAI/gpt-j-6B
 target_model: ./ft_llms/target_model_gptj/checkpoint-400 # valid model:
 reference_model: ./ft_llms/reference_model_gptj/checkpoint-400 #
-dataset_name: wikitext # valid dataset:
-dataset_config_name: wikitext-2-raw-v1
+dataset_name: ag_news # xusm, ag_news
+dataset_config_name: null
 cache_path: ./cache
 use_dataset_cache: true
 packing: true
@@ -16,6 +16,7 @@ attack_kind: stat # valid attacks: nn, stat
 eval_batch_size: 1 # batch size of the evaluation phase
 maximum_samples: 200 # the maximum samples number for member and non-member records.
 block_size: 128
+validation_split_percentage: 10
 preprocessing_num_workers: 1
 mask_filling_model_name: t5-small
 buffer_size: 1 # TODO: figure out how this parameter works.
