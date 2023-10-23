@@ -1,5 +1,5 @@
 import os
-
+import random
 import datasets
 import trl
 from attack.utils import create_folder
@@ -50,21 +50,27 @@ def packing_texts(examples):
         "text": packed_texts
     }
 def dataset_prepare(args, tokenizer=None, num_of_sequences=1024, chars_per_token=3.6):
-    raw_datasets = datasets.load_dataset(args.dataset_name, args.dataset_config_name)
+    raw_datasets = datasets.load_dataset(args.dataset_name, args.dataset_config_name)['train']
     # if "validation" in raw_datasets.keys():
     #     train_dataset = raw_datasets["train"]
     #     valid_dataset = raw_datasets["validation"]
     # else:
-    train_dataset = datasets.load_dataset(
-        args.dataset_name,
-        args.dataset_config_name,
-        split=f"train[:{1-args.validation_split_percentage}%]"
-    )
-    valid_dataset = datasets.load_dataset(
-        args.dataset_name,
-        args.dataset_config_name,
-        split=f"train[{1-args.validation_split_percentage}%:]",
-    )
+    # train_dataset = datasets.load_dataset(
+    #     args.dataset_name,
+    #     args.dataset_config_name,
+    #     split=f"train[:{1-args.validation_split_percentage}%]"
+    # )
+    # valid_dataset = datasets.load_dataset(
+    #     args.dataset_name,
+    #     args.dataset_config_name,
+    #     split=f"train[{1-args.validation_split_percentage}%:]",
+    # )
+
+    train_idxs = set(random.sample(range(len(raw_datasets)), int(len(raw_datasets) * (1 - args.validation_split_percentage))))
+    valid_idxs = set(range(len(raw_datasets))) - train_idxs
+    train_dataset = datasets.Dataset.from_dict(raw_datasets[train_idxs])
+    valid_dataset = datasets.Dataset.from_dict(raw_datasets[valid_idxs])
+
 
     global text_column
     column = train_dataset.column_names

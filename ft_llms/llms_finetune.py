@@ -73,7 +73,7 @@ if __name__ == "__main__":
     parser.add_argument("--pad_token_id", default=None, type=int, help="The end of sequence token.")
     parser.add_argument("--add_eos_token", action="store_true", help="Add EOS token to tokenizer", default=False)
     parser.add_argument("--add_bos_token", action="store_true", help="Add BOS token to tokenizer", default=False)
-    parser.add_argument("--validation_split_percentage", default=10,
+    parser.add_argument("--validation_split_percentage", default=0.1,
                         help="The percentage of the train set used as validation set in case there's no validation split")
     args = parser.parse_args()
 
