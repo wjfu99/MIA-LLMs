@@ -88,6 +88,10 @@ if not cfg["load_attack_data"]:
     train_dataset, valid_dataset = dataset_prepare(cfg, tokenizer=tokenizer)
     train_dataset = Dataset.from_dict(train_dataset[cfg.train_sta_idx:cfg.train_end_idx])
     valid_dataset = Dataset.from_dict(valid_dataset[cfg.eval_sta_idx:cfg.eval_end_idx])
+    train_dataset = Dataset.from_dict(train_dataset[random.sample(range(len(train_dataset["text"])), cfg["maximum_samples"])])
+    valid_dataset = Dataset.from_dict(valid_dataset[random.sample(range(len(valid_dataset["text"])), cfg["maximum_samples"])])
+    # Dataset.from_dict(all_dataset[random.sample(range(0, 30000), cfg["sample_number"])]),
+    # Dataset.from_dict(all_dataset[random.sample(range(30000, 35000), cfg["sample_number"])])
     logger.info("Successfully load datasets!")
 
     # Prepare dataloade

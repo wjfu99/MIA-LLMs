@@ -55,21 +55,21 @@ def dataset_prepare(args, tokenizer=None, num_of_sequences=1024, chars_per_token
     #     train_dataset = raw_datasets["train"]
     #     valid_dataset = raw_datasets["validation"]
     # else:
-    # train_dataset = datasets.load_dataset(
-    #     args.dataset_name,
-    #     args.dataset_config_name,
-    #     split=f"train[:{1-args.validation_split_percentage}%]"
-    # )
-    # valid_dataset = datasets.load_dataset(
-    #     args.dataset_name,
-    #     args.dataset_config_name,
-    #     split=f"train[{1-args.validation_split_percentage}%:]",
-    # )
+    train_dataset = datasets.load_dataset(
+        args.dataset_name,
+        args.dataset_config_name,
+        split=f"train[:{int((1-args.validation_split_percentage)*100)}%]"
+    )
+    valid_dataset = datasets.load_dataset(
+        args.dataset_name,
+        args.dataset_config_name,
+        split=f"train[{int((1-args.validation_split_percentage)*100)}%:]",
+    )
 
-    train_idxs = set(random.sample(range(len(raw_datasets)), int(len(raw_datasets) * (1 - args.validation_split_percentage))))
-    valid_idxs = set(range(len(raw_datasets))) - train_idxs
-    train_dataset = datasets.Dataset.from_dict(raw_datasets[train_idxs])
-    valid_dataset = datasets.Dataset.from_dict(raw_datasets[valid_idxs])
+    # train_idxs = set(random.sample(range(len(raw_datasets)), int(len(raw_datasets) * (1 - args.validation_split_percentage))))
+    # valid_idxs = set(range(len(raw_datasets))) - train_idxs
+    # train_dataset = datasets.Dataset.from_dict(raw_datasets[train_idxs])
+    # valid_dataset = datasets.Dataset.from_dict(raw_datasets[valid_idxs])
 
 
     global text_column
