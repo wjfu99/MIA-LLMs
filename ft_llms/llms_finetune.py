@@ -15,13 +15,14 @@ import sys
 here = os.path.dirname(__file__)
 sys.path.append(os.path.join(here, '..'))
 from data.prepare import dataset_prepare
+from attack.utils import create_folder
 
 import os
 
 os.environ['HTTP_PROXY'] = 'http://fuwenjie:19990621f@192.168.75.13:7890'
 os.environ['HTTPS_PROXY'] = 'http://fuwenjie:19990621f@192.168.75.13:7890'
 
-from utils import get_logger, constantlengthdatasetiter
+from utils import get_logger, constantlengthdatasetiter, print_trainable_parameters
 # trl.trainer.ConstantLengthDataset.__dict__["__iter__"] = constantlengthdatasetiter
 setattr(trl.trainer.ConstantLengthDataset, "__iter__", constantlengthdatasetiter)
 
@@ -72,7 +73,7 @@ if __name__ == "__main__":
     parser.add_argument("--pad_token_id", default=None, type=int, help="The end of sequence token.")
     parser.add_argument("--add_eos_token", action="store_true", help="Add EOS token to tokenizer", default=False)
     parser.add_argument("--add_bos_token", action="store_true", help="Add BOS token to tokenizer", default=False)
-    parser.add_argument("--validation_split_percentage", default=5,
+    parser.add_argument("--validation_split_percentage", default=10,
                         help="The percentage of the train set used as validation set in case there's no validation split")
     args = parser.parse_args()
 
@@ -178,6 +179,8 @@ if __name__ == "__main__":
         model = get_peft_model(model, peft_config)
     else:
         logger.info("Using Full Finetuning")
+
+    print_trainable_parameters(model)
 
     with accelerator.main_process_first():
         train_dataset, valid_dataset = dataset_prepare(args, tokenizer=tokenizer)
