@@ -2,10 +2,10 @@ tensorboard: True
 random_seed: 48
 
 model_name: gpt2 # EleutherAI/gpt-j-6B gpt2
-target_model: /mnt/data0/fuwenjie/MIA-LLMs/ft_llms/gpt2/wiki2/target/checkpoint-700 # valid model:
+target_model: /mnt/data0/fuwenjie/MIA-LLMs/ft_llms/gpt2/ag_news/target/checkpoint-5400 # valid model:
 reference_model: gpt2 #
-dataset_name: wikitext # xusm, ag_news, wikitext
-dataset_config_name: wikitext-2-raw-v1 # wikitext-2-raw-v1 null
+dataset_name: ag_news # xsum, ag_news, wikitext
+dataset_config_name: null # wikitext-2-raw-v1 null
 cache_path: ./cache
 use_dataset_cache: true
 packing: true
@@ -30,9 +30,9 @@ perturbation_number: 1 # the number of different perturbation strength / positio
 sample_number: 6 # the number of samples for each data group
 
 train_sta_idx: 0
-train_end_idx: 6000
+train_end_idx: 10000
 eval_sta_idx: 0
-eval_end_idx: 600
+eval_end_idx: 1000
 
 loss_kind: ddpm # valid loss estimation methods: ddpm, ddim
 time_step: 10
@@ -50,5 +50,5 @@ attack_data_path: attack
 #
 epoch_number: 110
 load_trained: false # whether to load existing trained attack model
-load_attack_data: false # whether to load prepared attack data if existing.
+load_attack_data: true # whether to load prepared attack data if existing.
 split: [123123, 3213]
