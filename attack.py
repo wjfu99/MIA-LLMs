@@ -63,11 +63,13 @@ if not cfg["load_attack_data"]:
     target_model = AutoModelForCausalLM.from_pretrained(cfg["target_model"], quantization_config=BitsAndBytesConfig(load_in_8bit=True),
                                                         torch_dtype=torch_dtype,
                                                         local_files_only=True,
-                                                        config=AutoConfig.from_pretrained(cfg["model_name"]))
+                                                        config=AutoConfig.from_pretrained(cfg["model_name"]),
+                                                        cache_dir=cfg["cache_path"])
     reference_model = AutoModelForCausalLM.from_pretrained(cfg["reference_model"], quantization_config=BitsAndBytesConfig(load_in_8bit=True),
                                                            torch_dtype=torch_dtype,
                                                            local_files_only=True,
-                                                           config=AutoConfig.from_pretrained(cfg["model_name"]))
+                                                           config=AutoConfig.from_pretrained(cfg["model_name"]),
+                                                           cache_dir=cfg["cache_path"])
 
 
     logger.info("Successfully load models")

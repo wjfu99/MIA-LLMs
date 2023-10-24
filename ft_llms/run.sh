@@ -4,8 +4,8 @@
 # -b 1 --log_steps 100 -lr 5e-6 -e 1 --gradient_accumulation_steps 16 --pad_token_id=18636 --disable_lora
 
 accelerate launch ./ft_llms/llms_finetune.py \
---output_dir ./ft_llms/target_model \
---block_size 128 --eval_steps 100 --save_epochs 5 --log_steps 100 \
+--output_dir ./ft_llms/gpt2/wiki2/target/ \
+--block_size 128 --eval_steps 100 --save_epochs 100 --log_steps 100 \
 -d wikitext -dc wikitext-2-raw-v1 -m gpt2 --packing --use_dataset_cache \
 -e 200 -b 8 -lr 1e-4 --gradient_accumulation_steps 8 \
 --disable_lora --train_sta_idx=0 --train_end_idx=6000 --eval_sta_idx=0 --eval_end_idx=600
@@ -33,21 +33,36 @@ accelerate launch ./ft_llms/llms_finetune.py \
 -e 200 -b 8 -lr 5e-5 --gradient_accumulation_steps 8 \
 --train_sta_idx=0 --train_end_idx=6000 --eval_sta_idx=0 --eval_end_idx=600
 
+# for wiki103 gptj
+accelerate launch ./ft_llms/llms_finetune.py \
+--output_dir ./ft_llms/gpt2/wiki103/target/ \
+--block_size 128 --eval_steps 100 --save_epochs 100 --log_steps 100 \
+-d wikitext -dc wikitext-103-raw-v1 -m gpt2 --packing --use_dataset_cache \
+-e 200 -b 8 -lr 1e-4 --gradient_accumulation_steps 8 \
+--disable_lora --train_sta_idx=0 --train_end_idx=6000 --eval_sta_idx=0 --eval_end_idx=600
 
-accelerate launch llms_finetune.py \
---block_size 1024 --eval_steps 100 --save_steps 100 --log_steps 100 \
--d wikitext -dc wikitext-2-raw-v1 -m gpt2 \
--e 200 -b 1 -lr 5e-4 --gradient_accumulation_steps 8 \
- --disable_lora
 
 
-accelerate launch llms_finetune.py \
---block_size 1024 --eval_steps 100 --save_steps 100 --log_steps 100 \
--d wikitext -dc wikitext-2-raw-v1 -m gpt2 \
--e 100 -b 1 -lr 1e-3 --gradient_accumulation_steps 8 \
- --disable_lora
+# start from gptj, save via step policy.
+accelerate launch ./ft_llms/llms_finetune.py \
+--output_dir ./ft_llms/target_model_gptj \
+--block_size 512 --eval_steps 20 --save_epochs 200 --log_steps 20 \
+-d wikitext -dc wikitext-103-raw-v1 -m EleutherAI/gpt-j-6B --packing --use_dataset_cache \
+-e 200 -b 4 -lr 1e-4 --gradient_accumulation_steps 8 \
+--disable_lora --train_sta_idx=0 --train_end_idx=50000 --eval_sta_idx=0 --eval_end_idx=600
 
-accelerate launch llms_finetune.py \
---block_size 1024 --eval_steps 100 --save_steps 100 --log_steps 100 \
--d wikitext -dc wikitext-2-raw-v1 -m gpt2 \
--e 200 -b 1 -lr 1e-4 --gradient_accumulation_steps 8
+# wiki103 gpt2 lora
+accelerate launch ./ft_llms/llms_finetune.py \
+--output_dir ./ft_llms/gptj/wiki103/target/ \
+--block_size 128 --eval_steps 100 --save_epochs 5 --log_steps 100 \
+-d wikitext -dc wikitext-103-raw-v1 -m gpt2 --packing --use_dataset_cache \
+-e 200 -b 8 -lr 1e-4 --gradient_accumulation_steps 8 \
+--train_sta_idx=0 --train_end_idx=50000 --eval_sta_idx=0 --eval_end_idx=600
+
+# ag_news gpt2 lora
+accelerate launch ./ft_llms/llms_finetune.py \
+--output_dir ./ft_llms/gpt2/ag_news/target/ \
+--block_size 128 --eval_steps 20 --save_epochs 100 --log_steps 20 \
+-d ag_news -m gpt2 --packing --use_dataset_cache \
+-e 200 -b 8 -lr 1e-4 --gradient_accumulation_steps 8 \
+--disable_lora --train_sta_idx=0 --train_end_idx=15000 --eval_sta_idx=0 --eval_end_idx=1500

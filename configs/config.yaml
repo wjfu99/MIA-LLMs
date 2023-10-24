@@ -1,9 +1,9 @@
 tensorboard: True
 random_seed: 48
 
-model_name: gpt2 # EleutherAI/gpt-j-6B gpt2
-target_model: /mnt/data0/fuwenjie/MIA-LLMs/ft_llms/gpt2/ag_news/target/checkpoint-5400 # valid model:
-reference_model: /mnt/data0/fuwenjie/MIA-LLMs/ft_llms/gpt2/ag_news/candidate/checkpoint-800 #
+model_name: EleutherAI/gpt-j-6B # EleutherAI/gpt-j-6B gpt2
+target_model: /mnt/data0/fuwenjie/MIA-LLMs/ft_llms/gptj/ag_news/target/checkpoint-400 # valid model:
+reference_model: /mnt/data0/fuwenjie/MIA-LLMs/ft_llms/gptj/ag_news/pretrained_lora #
 dataset_name: ag_news # xsum, ag_news, wikitext
 dataset_config_name: null # wikitext-2-raw-v1 null
 cache_path: ./cache
