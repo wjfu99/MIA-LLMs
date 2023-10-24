@@ -78,6 +78,8 @@ def dataset_prepare(args, tokenizer=None, num_of_sequences=1024, chars_per_token
         text_column = "text"
     elif "document" in column:
         text_column = "document"
+    elif "content" in column:
+        text_column = "content"
 
     train_dataset = train_dataset.select_columns(text_column)
     valid_dataset = valid_dataset.select_columns(text_column)

@@ -3,7 +3,7 @@ random_seed: 48
 
 model_name: gpt2 # EleutherAI/gpt-j-6B gpt2
 target_model: /mnt/data0/fuwenjie/MIA-LLMs/ft_llms/gpt2/ag_news/target/checkpoint-5400 # valid model:
-reference_model: /mnt/data0/fuwenjie/MIA-LLMs/ft_llms/gpt2/ag_news/refer/checkpoint-1000 #
+reference_model: /mnt/data0/fuwenjie/MIA-LLMs/ft_llms/gpt2/ag_news/oracle/checkpoint-5400 #
 dataset_name: ag_news # xsum, ag_news, wikitext
 dataset_config_name: null # wikitext-2-raw-v1 null
 cache_path: ./cache
