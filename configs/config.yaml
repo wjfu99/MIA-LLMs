@@ -3,7 +3,7 @@ random_seed: 48
 
 model_name: gpt2 # EleutherAI/gpt-j-6B gpt2
 target_model: /mnt/data0/fuwenjie/MIA-LLMs/ft_llms/gpt2/ag_news/target/checkpoint-5400 # valid model:
-reference_model: gpt2 #
+reference_model: /mnt/data0/fuwenjie/MIA-LLMs/ft_llms/gpt2/ag_news/refer/checkpoint-1000 #
 dataset_name: ag_news # xsum, ag_news, wikitext
 dataset_config_name: null # wikitext-2-raw-v1 null
 cache_path: ./cache
@@ -50,5 +50,5 @@ attack_data_path: attack
 #
 epoch_number: 110
 load_trained: false # whether to load existing trained attack model
-load_attack_data: true # whether to load prepared attack data if existing.
+load_attack_data: false # whether to load prepared attack data if existing.
 split: [123123, 3213]
