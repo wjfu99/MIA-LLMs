@@ -40,7 +40,8 @@ torch_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float1
 model = AutoModelForCausalLM.from_pretrained(cfg.target_model, quantization_config=bnb_config,
                                                     torch_dtype=torch_dtype,
                                                     local_files_only=True,
-                                                    config=config)
+                                                    config=config,
+                                                    cache_dir=cfg["cache_path"])
 tokenizer = AutoTokenizer.from_pretrained(cfg.model_name)
 
 # Load datasets
@@ -56,12 +57,20 @@ for text in tqdm(prompt_dataloader):
     prompt = (text["text"])
     input_ids = tokenizer(prompt, return_tensors="pt").input_ids.to(accelerator.device)
     clipped_ids = input_ids[:, :16]
-    gen_tokens = model.module.generate(
-        clipped_ids,
-        num_beams=2,
-        do_sample=True,
-        max_length=128,
-    )
+    if hasattr(model, "module"):
+        gen_tokens = model.module.generate(
+            clipped_ids,
+            num_beams=1,
+            do_sample=True,
+            max_length=128,
+        )
+    else:
+        gen_tokens = model.generate(
+            clipped_ids,
+            num_beams=1,
+            do_sample=True,
+            max_length=128,
+        )
     print(model(gen_tokens, labels=gen_tokens).loss)
     gen_text = tokenizer.batch_decode(gen_tokens)
     generated_dataset["text"].extend(gen_text)
