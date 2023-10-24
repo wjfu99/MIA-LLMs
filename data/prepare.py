@@ -50,7 +50,7 @@ def packing_texts(examples):
         "text": packed_texts
     }
 def dataset_prepare(args, tokenizer=None, num_of_sequences=1024, chars_per_token=3.6):
-    raw_datasets = datasets.load_dataset(args.dataset_name, args.dataset_config_name)['train']
+    # raw_datasets = datasets.load_dataset(args.dataset_name, args.dataset_config_name)['train']
     # if "validation" in raw_datasets.keys():
     #     train_dataset = raw_datasets["train"]
     #     valid_dataset = raw_datasets["validation"]

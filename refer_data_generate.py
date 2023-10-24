@@ -5,13 +5,15 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 import logging
 import random
-
+import sys
+here = os.path.dirname(__file__)
+sys.path.append(os.path.join(here, '..'))
 from data.prepare import dataset_prepare
 from attack.utils import Dict
 
 import yaml
 import datasets
-from datasets import Image, Dataset
+from datasets import Image, Dataset, load_from_disk, concatenate_datasets
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 import trl
@@ -31,19 +33,19 @@ cfg["cache_path"] = "./cache"
 
 print(accelerator.device)
 
-config = AutoConfig.from_pretrained("EleutherAI/gpt-j-6B")
+config = AutoConfig.from_pretrained(cfg.model_name)
 config.use_cache = False
 bnb_config = None
 torch_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-model = AutoModelForCausalLM.from_pretrained("./ft_llms/target_model_gptj/checkpoint-200", quantization_config=bnb_config,
+model = AutoModelForCausalLM.from_pretrained(cfg.target_model, quantization_config=bnb_config,
                                                     torch_dtype=torch_dtype,
                                                     local_files_only=True,
                                                     config=config)
-tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-j-6B")
+tokenizer = AutoTokenizer.from_pretrained(cfg.model_name)
 
 # Load datasets
 train_dataset, valid_dataset = dataset_prepare(cfg, tokenizer=tokenizer)
-prompt_dataset = Dataset.from_dict(train_dataset[6000:12000])
+prompt_dataset = Dataset.from_dict(train_dataset[10000:20000])
 prompt_dataloader = DataLoader(prompt_dataset, batch_size=10)
 
 model, prompt_dataloader = accelerator.prepare(model, prompt_dataloader)
@@ -54,11 +56,10 @@ for text in tqdm(prompt_dataloader):
     prompt = (text["text"])
     input_ids = tokenizer(prompt, return_tensors="pt").input_ids.to(accelerator.device)
     clipped_ids = input_ids[:, :16]
-    gen_tokens = model.generate(
+    gen_tokens = model.module.generate(
         clipped_ids,
         num_beams=2,
         do_sample=True,
-        # temperature=0.3,
         max_length=128,
     )
     print(model(gen_tokens, labels=gen_tokens).loss)
@@ -66,4 +67,19 @@ for text in tqdm(prompt_dataloader):
     generated_dataset["text"].extend(gen_text)
 
 generated_dataset = Dataset.from_dict(generated_dataset)
-generated_dataset.save_to_disk(f"./cache/wikitext/refer_dataset_gptj/{accelerator.device}")
+save_dir = f"{cfg.cache_path}/{cfg.dataset_name}/{cfg.dataset_config_name}/refer@{cfg.model_name}/"
+generated_dataset.save_to_disk(save_dir + f"{accelerator.device}")
+
+accelerator.wait_for_everyone()
+
+if accelerator.is_main_process:
+    concatenated_dataset = None
+    for sub_dir in os.listdir(save_dir):
+        data_path = os.path.join(save_dir, sub_dir)
+        if os.path.isdir(data_path):
+            if concatenated_dataset is None:
+                concatenated_dataset = load_from_disk(data_path)
+            else:
+                dataset = load_from_disk(data_path)
+                concatenated_dataset = concatenate_datasets([concatenated_dataset, dataset])
+    concatenated_dataset.save_to_disk(save_dir)
