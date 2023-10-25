@@ -16,6 +16,7 @@ here = os.path.dirname(__file__)
 sys.path.append(os.path.join(here, '..'))
 from data.prepare import dataset_prepare
 from attack.utils import create_folder
+from transformers import LlamaTokenizer
 
 import os
 
@@ -98,7 +99,7 @@ if __name__ == "__main__":
     elif args.disable_flash_attention and model_type == "llama":
         logger.info("Model is llama, could be using flash attention...")
     elif not args.disable_flash_attention and torch.cuda.get_device_capability()[0] >= 8:
-        from llama_patch import replace_attn_with_flash_attn
+        from ft_llms.llama_patch import replace_attn_with_flash_attn
         logger.info("Using flash attention for llama...")
         replace_attn_with_flash_attn()
         use_flash_attention = True
@@ -113,10 +114,16 @@ if __name__ == "__main__":
     else:
         kwargs = {"device_map": None}
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name, token=access_token,
-                                              trust_remote_code=args.trust_remote_code, cache_dir=args.cache_path,
-                                              add_eos_token=args.add_eos_token, add_bos_token=args.add_bos_token,
-                                              use_fast=True)
+    if model_type == "llama":
+        tokenizer = LlamaTokenizer.from_pretrained(args.model_name, token=access_token,
+                                                  trust_remote_code=args.trust_remote_code, cache_dir=args.cache_path,
+                                                  add_eos_token=args.add_eos_token, add_bos_token=args.add_bos_token,
+                                                  use_fast=True)
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name, token=access_token,
+                                                  trust_remote_code=args.trust_remote_code, cache_dir=args.cache_path,
+                                                  add_eos_token=args.add_eos_token, add_bos_token=args.add_bos_token,
+                                                  use_fast=True)
     # THIS IS A HACK TO GET THE PAD TOKEN ID NOT TO BE EOS
     # good one for LLama is 18610
     if args.pad_token_id is not None:
@@ -161,7 +168,7 @@ if __name__ == "__main__":
                                                  torch_dtype=torch_dtype, config=config, **kwargs)
 
     if use_flash_attention:
-        from llama_patch import llama_forward_with_flash_attn
+        from ft_llms.llama_patch import llama_forward_with_flash_attn
 
         assert model.model.layers[
                    0].self_attn.forward.__doc__ == llama_forward_with_flash_attn.__doc__, "Model is not using flash attention"
@@ -172,7 +179,7 @@ if __name__ == "__main__":
             logger.info("Preparing model for kbit training...")
             model = prepare_model_for_kbit_training(model)
             if use_flash_attention:
-                from llama_patch import upcast_layer_for_flash_attention
+                from ft_llms.llama_patch import upcast_layer_for_flash_attention
 
                 logger.info("Upcasting flash attention layers...")
                 model = upcast_layer_for_flash_attention(model, torch_dtype)

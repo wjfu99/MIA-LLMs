@@ -17,7 +17,7 @@ from datasets import Image, Dataset, load_from_disk, concatenate_datasets
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 import trl
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2SeqLM, BitsAndBytesConfig, TrainingArguments, AutoConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2SeqLM, BitsAndBytesConfig, TrainingArguments, AutoConfig, LlamaTokenizer
 
 import os
 os.environ['HTTP_PROXY'] = 'http://fuwenjie:19990621f@localhost:7890'
@@ -42,8 +42,14 @@ model = AutoModelForCausalLM.from_pretrained(cfg.target_model, quantization_conf
                                                     local_files_only=True,
                                                     config=config,
                                                     cache_dir=cfg["cache_path"])
-tokenizer = AutoTokenizer.from_pretrained(cfg.model_name)
-
+model_type = config.to_dict()["model_type"]
+if model_type == "llama":
+    tokenizer = LlamaTokenizer.from_pretrained(cfg.model_name)
+else:
+    tokenizer = AutoTokenizer.from_pretrained(cfg.model_name)
+if tokenizer.pad_token_id is None:
+    print("Pad token id is None, setting to eos token id...")
+    tokenizer.pad_token_id = tokenizer.eos_token_id
 # Load datasets
 train_dataset, valid_dataset = dataset_prepare(cfg, tokenizer=tokenizer)
 prompt_dataset = Dataset.from_dict(train_dataset[10000:20000])
@@ -55,21 +61,21 @@ generated_dataset = {"text": []}
 
 for text in tqdm(prompt_dataloader):
     prompt = (text["text"])
-    input_ids = tokenizer(prompt, return_tensors="pt").input_ids.to(accelerator.device)
+    input_ids = tokenizer(prompt, return_tensors="pt", padding=True).input_ids.to(accelerator.device)
     clipped_ids = input_ids[:, :16]
     if hasattr(model, "module"):
         gen_tokens = model.module.generate(
             clipped_ids,
             num_beams=1,
             do_sample=True,
-            max_length=128,
+            max_length=input_ids.size(-1),
         )
     else:
         gen_tokens = model.generate(
             clipped_ids,
             num_beams=1,
             do_sample=True,
-            max_length=128,
+            max_length=input_ids.size(-1),
         )
     print(model(gen_tokens, labels=gen_tokens).loss)
     gen_text = tokenizer.batch_decode(gen_tokens)

@@ -16,7 +16,7 @@ from datasets import Image, Dataset
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 import trl
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2SeqLM, BitsAndBytesConfig, TrainingArguments, AutoConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2SeqLM, BitsAndBytesConfig, TrainingArguments, AutoConfig, LlamaTokenizer
 from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training
 
 os.environ['HTTP_PROXY'] = 'http://fuwenjie:19990621f@localhost:7890'
@@ -73,10 +73,15 @@ if not cfg["load_attack_data"]:
 
 
     logger.info("Successfully load models")
-
+    config = AutoConfig.from_pretrained(cfg.model_name)
     # Load tokenizer.
-    tokenizer = AutoTokenizer.from_pretrained(cfg["model_name"], add_eos_token=cfg["add_eos_token"],
-                                              add_bos_token=cfg["add_bos_token"], use_fast=True)
+    model_type = config.to_dict()["model_type"]
+    if model_type == "llama":
+        tokenizer = LlamaTokenizer.from_pretrained(cfg["model_name"], add_eos_token=cfg["add_eos_token"],
+                                                  add_bos_token=cfg["add_bos_token"], use_fast=True)
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(cfg["model_name"], add_eos_token=cfg["add_eos_token"],
+                                                  add_bos_token=cfg["add_bos_token"], use_fast=True)
 
     if cfg["pad_token_id"] is not None:
         logger.info("Using pad token id %d", cfg["pad_token_id"])

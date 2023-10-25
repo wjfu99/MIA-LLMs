@@ -6,7 +6,7 @@ import os
 # dataset = load_from_disk("./cache/wikitext/refer_dataset")
 # concatenated_dataset = concatenate_datasets(train_dataset, dataset)
 
-dataset_dir = "/mnt/data0/fuwenjie/MIA-LLMs/cache/ag_news/None/refer@gpt2"
+dataset_dir = "/mnt/data0/fuwenjie/MIA-LLMs/cache/ag_news/None/refer@decapoda-research/llama-7b-hf"
 concatenated_dataset = None
 
 for file_name in os.listdir(dataset_dir):
@@ -18,4 +18,4 @@ for file_name in os.listdir(dataset_dir):
             dataset = load_from_disk(data_path)
             concatenated_dataset = concatenate_datasets([concatenated_dataset, dataset])
 
-concatenated_dataset.save_to_disk("/mnt/data0/fuwenjie/MIA-LLMs/cache/ag_news/None/refer@gpt2")
+concatenated_dataset.save_to_disk("/mnt/data0/fuwenjie/MIA-LLMs/cache/ag_news/None/refer@decapoda-research/llama-7b-hf")
