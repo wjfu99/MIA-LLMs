@@ -3,7 +3,7 @@ random_seed: 48
 
 model_name: decapoda-research/llama-7b-hf # EleutherAI/gpt-j-6B gpt2
 target_model: /mnt/data0/fuwenjie/MIA-LLMs/ft_llms/llama/ag_news/target/checkpoint-600 # valid model:
-reference_model: /mnt/data0/fuwenjie/MIA-LLMs/ft_llms/llama/ag_news/refer/checkpoint-1000 #
+reference_model: /mnt/data0/fuwenjie/MIA-LLMs/ft_llms/llama/ag_news/oracle/checkpoint-600 #
 dataset_name: ag_news # xsum, ag_news, wikitext
 dataset_config_name: null # wikitext-2-raw-v1 null
 cache_path: ./cache
