@@ -4,7 +4,7 @@ accelerate launch ./ft_llms/llms_finetune.py \
 --output_dir ./ft_llms/llama/ag_news/target/ \
 --block_size 128 --eval_steps 100 --save_epochs 100 --log_steps 100 \
 -d ag_news -m decapoda-research/llama-7b-hf --packing --use_dataset_cache \
--e 10 -b 4 -lr 1e-4 --gradient_accumulation_steps 4 \
+-e 10 -b 4 -lr 1e-4 --gradient_accumulation_steps 1 \
 --train_sta_idx=0 --train_end_idx=10000 --eval_sta_idx=0 --eval_end_idx=1000
 
 # refer candidate
