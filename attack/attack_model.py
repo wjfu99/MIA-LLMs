@@ -80,10 +80,8 @@ class AttackModel:
         """
         per_losses = []
         ref_per_losses = []
-        per_token_lens = []
         ori_losses = []
         ref_ori_losses = []
-        ori_token_lens = []
         ori_dataset = deepcopy(dataset)
         # TODO: the argument calibration is not work.
         strength = np.linspace(cfg['start_strength'], cfg['end_strength'], cfg['perturbation_number'])
@@ -92,53 +90,33 @@ class AttackModel:
             ori_loss, ref_ori_loss, ori_token_len = self.llm_eval(model, ori_dataset, cfg, idx_rate, refer_model=self.reference_model)
             ori_losses.append(ori_loss)
             ref_ori_losses.append(ref_ori_loss)
-            ori_token_lens.append(ori_token_len)
             perturb_fn = partial(self.sentence_perturbation, idx_rate=idx_rate)
             sampled_per_losses = []
             sampled_ref_per_losses = []
-            sampled_per_token_lens = []
             for _ in range(cfg["sample_number"]):
                 per_loss, ref_per_loss, per_token_len = self.llm_eval(model, ori_dataset, cfg, idx_rate, perturb_fn=perturb_fn, refer_model=self.reference_model)
                 sampled_per_losses.append(per_loss)
                 sampled_ref_per_losses.append(ref_per_loss)
-                sampled_per_token_lens.append(per_token_len)
             sampled_per_losses = np.concatenate(sampled_per_losses, axis=-1)
             sampled_ref_per_losses = np.concatenate(sampled_ref_per_losses, axis=-1)
-            sampled_per_token_lens = np.concatenate(sampled_per_token_lens, axis=-1)
             per_losses.append(np.expand_dims(sampled_per_losses, axis=-1))
             ref_per_losses.append(np.expand_dims(sampled_ref_per_losses, axis=-1))
-            per_token_lens.append(np.expand_dims(sampled_per_token_lens, axis=-1))
         ori_losses = np.concatenate(ori_losses, axis=-1)
         ref_ori_losses = np.concatenate(ref_ori_losses, axis=-1)
-        ori_token_lens = np.concatenate(ori_token_lens, axis=-1)
-        unnorm_ori_losses = (ori_token_lens - 1) * ori_losses
-        unnorm_ref_ori_losses = (ori_token_lens - 1) * ref_ori_losses
-        per_token_lens = np.concatenate(per_token_lens, axis=-1)
         per_losses = np.concatenate(per_losses, axis=-1)
-        unnorm_per_losses = (per_token_lens - 1) * per_losses
         var_losses = per_losses - np.expand_dims(ori_losses, axis=-2)
-        unnorm_var_losses = unnorm_per_losses - np.expand_dims(unnorm_ori_losses, axis=-2)
         ref_per_losses = np.concatenate(ref_per_losses, axis=-1) if cfg["calibration"] else None
-        unnorm_ref_per_losses = (per_token_lens - 1) * ref_per_losses
         ref_var_losses = ref_per_losses - np.expand_dims(ref_ori_losses, axis=-2) if cfg["calibration"] else None
-        unnorm_ref_var_losses = unnorm_ref_per_losses - np.expand_dims(unnorm_ref_ori_losses, axis=-2)
-
 
         output = (Dict(
             per_losses=per_losses,
             ori_losses=ori_losses,
             var_losses=var_losses,
-            unnorm_ori_losses=unnorm_ori_losses,
-            unnorm_per_losses=unnorm_per_losses,
-            unnorm_var_losses=unnorm_var_losses
         ),
         Dict(
             ref_per_losses=ref_per_losses,
             ref_ori_losses=ref_ori_losses,
             ref_var_losses=ref_var_losses,
-            unnorm_ref_ori_losses=unnorm_ref_ori_losses,
-            unnorm_ref_per_losses=unnorm_ref_per_losses,
-            unnorm_ref_var_losses=unnorm_ref_var_losses
         ))
         return output
 
@@ -200,6 +178,11 @@ class AttackModel:
                        - info_dict.ref_nonmem_feat.ref_var_losses / np.expand_dims(info_dict.ref_nonmem_feat.ref_ori_losses, -2)
             # gen_feat = info_dict.gen_feat.var_losses / info_dict.gen_feat.ori_losses[:, :, None] \
             #               - info_dict.ref_gen_feat.ref_var_losses / info_dict.ref_gen_feat.ref_ori_losses[:, :, None]
+            get_prob = lambda logprob: np.power(np.e, -logprob)
+            mem_feat = ((get_prob(info_dict.mem_feat.per_losses).mean((-1, -2)) - get_prob(info_dict.mem_feat.ori_losses).mean(-1)) -
+                        (get_prob(info_dict.ref_mem_feat.ref_per_losses).mean((-1, -2)) - get_prob(info_dict.ref_mem_feat.ref_ori_losses).mean(-1)))
+            nonmem_feat = ((get_prob(info_dict.nonmem_feat.per_losses).mean((-1, -2)) - get_prob(info_dict.nonmem_feat.ori_losses).mean(-1)) -
+                           (get_prob(info_dict.ref_nonmem_feat.ref_per_losses).mean((-1, -2)) - get_prob(info_dict.ref_nonmem_feat.ref_ori_losses).mean(-1)))
         else:
             mem_feat = info_dict.mem_feat.var_losses / info_dict.mem_feat.ori_losses
             nonmem_feat = info_dict.nonmem_feat.var_losses / info_dict.nonmem_feat.ori_losses
@@ -210,14 +193,11 @@ class AttackModel:
             # gen_feat = gen_feat[:, 2, :]
 
         if cfg["attack_kind"] == "stat":
-            mem_feat = mem_feat[:, :, 0]
-            nonmem_feat = nonmem_feat[:, :, 0]
-            mem_feat[np.isnan(mem_feat)] = 0
-            nonmem_feat[np.isnan(nonmem_feat)] = 0
-            # feat = np.concatenate([info_dict.mem_feat.ori_losses - info_dict.ref_mem_feat.ref_ori_losses, info_dict.nonmem_feat.ori_losses - info_dict.ref_nonmem_feat.ref_ori_losses])
-            # feat = np.concatenate([info_dict.mem_feat.per_losses.mean(axis=(-1)), info_dict.nonmem_feat.per_losses.mean(axis=(-1))])
-            feat = np.concatenate([mem_feat.mean(axis=(-1)), nonmem_feat.mean(axis=(-1))])
-            # feat = np.concatenate([info_dict.mem_feat.var_losses.min(axis=-1), info_dict.nonmem_feat.var_losses.min(axis=-1)])
+            # mem_feat = mem_feat[:, :, 0]
+            # nonmem_feat = nonmem_feat[:, :, 0]
+            # mem_feat[np.isnan(mem_feat)] = 0
+            # nonmem_feat[np.isnan(nonmem_feat)] = 0
+            feat = np.concatenate([mem_feat, nonmem_feat])
             ground_truth = np.concatenate([np.zeros(mem_feat.shape[0]), np.ones(nonmem_feat.shape[0])]).astype(int)
 
         elif cfg["attack_kind"] == "nn":
@@ -268,7 +248,7 @@ class AttackModel:
 
         n_masks = 0
         while n_masks < n_spans:
-            start = np.random.randint(perturb_start_idx, len(tokens) - span_length)
+            start = np.random.randint(0, len(tokens) - span_length)
             end = start + span_length
             search_start = max(0, start - cfg.buffer_size)
             search_end = min(len(tokens), end + cfg.buffer_size)

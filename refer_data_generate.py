@@ -53,7 +53,7 @@ if tokenizer.pad_token_id is None:
 # Load datasets
 train_dataset, valid_dataset = dataset_prepare(cfg, tokenizer=tokenizer)
 prompt_dataset = Dataset.from_dict(train_dataset[10000:20000])
-prompt_dataloader = DataLoader(prompt_dataset, batch_size=10)
+prompt_dataloader = DataLoader(prompt_dataset, batch_size=1)
 
 model, prompt_dataloader = accelerator.prepare(model, prompt_dataloader)
 
@@ -77,6 +77,8 @@ for text in tqdm(prompt_dataloader):
             do_sample=True,
             max_length=input_ids.size(-1),
         )
+    if model_type == "llama":
+        gen_tokens = gen_tokens[:, 1:]
     print(model(gen_tokens, labels=gen_tokens).loss)
     gen_text = tokenizer.batch_decode(gen_tokens)
     generated_dataset["text"].extend(gen_text)
