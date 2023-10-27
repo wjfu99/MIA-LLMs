@@ -195,6 +195,7 @@ if __name__ == "__main__":
         train_dataset = Dataset.from_dict(train_dataset[args.train_sta_idx:args.train_end_idx])
         valid_dataset = Dataset.from_dict(valid_dataset[args.eval_sta_idx:args.eval_end_idx])
         if args.refer:
+            train_dataset = None
             refer_data_path = f"{args.cache_path}/{args.dataset_name}/{args.dataset_config_name}/refer@{args.model_name}/"
             train_dataset = load_from_disk(refer_data_path)
         # train_dataset = load_from_disk("/mnt/data0/fuwenjie/MIA-LLMs/cache/ag_news/None/refer@gpt2")

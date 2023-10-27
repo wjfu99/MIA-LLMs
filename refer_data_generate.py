@@ -10,7 +10,7 @@ here = os.path.dirname(__file__)
 sys.path.append(os.path.join(here, '..'))
 from data.prepare import dataset_prepare
 from attack.utils import Dict
-
+import argparse
 import yaml
 import datasets
 from datasets import Image, Dataset, load_from_disk, concatenate_datasets
@@ -26,10 +26,20 @@ os.environ['HTTPS_PROXY'] = 'http://fuwenjie:19990621f@localhost:7890'
 # Load config file
 accelerator = Accelerator()
 
-with open("configs/config.yaml", 'r') as f:
-    cfg = yaml.safe_load(f)
-    cfg = Dict(cfg)
-cfg["cache_path"] = "./cache"
+parser = argparse.ArgumentParser()
+parser.add_argument("-m", "--model_name", type=str, default="meta-llama/Llama-2-7b-hf")
+parser.add_argument("-tm", "--target_model", type=str, default="meta-llama/Llama-2-7b-hf")
+parser.add_argument("-d", "--dataset_name", type=str, default="wikitext-2-raw-v1")
+parser.add_argument("-dc", "--dataset_config_name", type=str, default=None,
+                    help="The configuration name of the dataset to use (via the datasets library).")
+parser.add_argument("--cache_path", type=str, default="./cache")
+parser.add_argument("--use_dataset_cache", action="store_true", default=True)
+parser.add_argument("--packing", action="store_true", default=True)
+parser.add_argument("--block_size", type=int, default=128)
+parser.add_argument("--preprocessing_num_workers", type=int, default=1)
+parser.add_argument("--validation_split_percentage", default=0.1,
+                    help="The percentage of the train set used as validation set in case there's no validation split")
+cfg = parser.parse_args()
 
 print(accelerator.device)
 
@@ -41,7 +51,7 @@ model = AutoModelForCausalLM.from_pretrained(cfg.target_model, quantization_conf
                                                     torch_dtype=torch_dtype,
                                                     local_files_only=True,
                                                     config=config,
-                                                    cache_dir=cfg["cache_path"])
+                                                    cache_dir=cfg.cache_path)
 model_type = config.to_dict()["model_type"]
 if model_type == "llama":
     tokenizer = LlamaTokenizer.from_pretrained(cfg.model_name)
