@@ -83,6 +83,9 @@ if not cfg["load_attack_data"]:
         tokenizer = AutoTokenizer.from_pretrained(cfg["model_name"], add_eos_token=cfg["add_eos_token"],
                                                   add_bos_token=cfg["add_bos_token"], use_fast=True)
 
+    if cfg["model_name"] == "/mnt/data0/fuwenjie/MIA-LLMs/cache/models--decapoda-research--llama-7b-hf/snapshots/5f98eefcc80e437ef68d457ad7bf167c2c6a1348":
+        cfg["model_name"] = "decapoda-research/llama-7b-hf"
+
     if cfg["pad_token_id"] is not None:
         logger.info("Using pad token id %d", cfg["pad_token_id"])
         tokenizer.pad_token_id = cfg["pad_token_id"]

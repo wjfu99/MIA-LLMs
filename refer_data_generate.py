@@ -94,6 +94,8 @@ for text in tqdm(prompt_dataloader):
     generated_dataset["text"].extend(gen_text)
 
 generated_dataset = Dataset.from_dict(generated_dataset)
+if cfg.model_name == "/mnt/data0/fuwenjie/MIA-LLMs/cache/models--decapoda-research--llama-7b-hf/snapshots/5f98eefcc80e437ef68d457ad7bf167c2c6a1348":
+    cfg.model_name = "decapoda-research/llama-7b-hf"
 save_dir = f"{cfg.cache_path}/{cfg.dataset_name}/{cfg.dataset_config_name}/refer@{cfg.model_name}/"
 generated_dataset.save_to_disk(save_dir + f"{accelerator.device}")
 
