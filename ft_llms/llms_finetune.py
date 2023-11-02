@@ -16,8 +16,10 @@ here = os.path.dirname(__file__)
 sys.path.append(os.path.join(here, '..'))
 from data.prepare import dataset_prepare
 from attack.utils import create_folder
-from transformers import LlamaTokenizer
-
+from transformers import LlamaTokenizer, get_scheduler
+from opacus.optimizers.optimizer import DPOptimizer
+from opacus.optimizers.ddpoptimizer import DistributedDPOptimizer
+from pyvacy import optim
 import os
 
 os.environ['HTTP_PROXY'] = 'http://fuwenjie:19990621f@192.168.75.13:7890'
@@ -37,6 +39,7 @@ if __name__ == "__main__":
     parser.add_argument("--cache_path", type=str, default="./cache")
     parser.add_argument("--use_dataset_cache", action="store_true", default=False)
     parser.add_argument("--refer", action="store_true", default=False)
+    parser.add_argument("--dpsgd", action="store_true", default=False)
     parser.add_argument("--packing", action="store_true", default=False)
     parser.add_argument("-t", "--token", type=str, default=None)
     parser.add_argument("--split_model", action="store_true", default=False)
@@ -232,6 +235,24 @@ if __name__ == "__main__":
         fp16=False if torch.cuda.is_bf16_supported() else True,
     )
 
+    if args.dpsgd:
+        training_steps = len(train_dataset['text']) / Accelerator().num_processes / args.gradient_accumulation_steps * args.epochs / args.batch_size
+        print(f"Training steps: {int(training_steps)}")
+        # optimizer = torch.optim.AdamW(model.parameters(), lr=0, weight_decay=args.weight_decay, eps=1e-6)
+        # optimizer = DistributedDPOptimizer(optimizer=optimizer, noise_multiplier=1.0, max_grad_norm=1.0)
+        optimizer = optim.DPAdam(
+            params=model.parameters(),
+            l2_norm_clip=1,
+            noise_multiplier=0.04,
+            batch_size=args.batch_size * Accelerator().num_processes * args.gradient_accumulation_steps,
+            lr=args.learning_rate,
+            eps=1e-6,
+        )
+        scheduler = get_scheduler("linear", optimizer, num_warmup_steps=0, num_training_steps=training_steps)
+    else:
+        optimizer = None
+        scheduler = None
+
     # get trainer
     trainer = SFTTrainer(
         model=model,
@@ -240,6 +261,7 @@ if __name__ == "__main__":
         eval_dataset=valid_dataset,
         dataset_text_field="text",
         tokenizer=tokenizer,
+        optimizers=(optimizer, scheduler)
     )
 
     # train
