@@ -9,7 +9,7 @@ from datasets import Dataset, load_from_disk
 import torch
 import logging
 import os
-from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training
+from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training, PrefixTuningConfig, PromptEncoderConfig, IA3Config
 import pandas as pd
 import sys
 here = os.path.dirname(__file__)
@@ -164,6 +164,14 @@ if __name__ == "__main__":
         task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.lora_rank, lora_alpha=args.lora_alpha,
         lora_dropout=args.lora_dropout
     )
+    # peft_config = PrefixTuningConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, num_virtual_tokens=20, encoder_hidden_size=128)
+    # peft_config = PromptEncoderConfig(task_type=TaskType.CAUSAL_LM, num_virtual_tokens=20, encoder_hidden_size=128)
+    # peft_config = IA3Config(
+    #     peft_type="IA3",
+    #     task_type=TaskType.CAUSAL_LM,
+    #     target_modules=["k_proj", "v_proj", "down_proj"],
+    #     feedforward_modules=["down_proj"],
+    # )
 
     torch_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
     model = AutoModelForCausalLM.from_pretrained(args.model_name, token=access_token, quantization_config=bnb_config,
