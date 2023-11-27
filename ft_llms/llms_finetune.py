@@ -39,6 +39,7 @@ if __name__ == "__main__":
     parser.add_argument("--cache_path", type=str, default="./cache")
     parser.add_argument("--use_dataset_cache", action="store_true", default=False)
     parser.add_argument("--refer", action="store_true", default=False)
+    parser.add_argument("--refer_data_source", type=str, default=None)
     parser.add_argument("--dpsgd", action="store_true", default=False)
     parser.add_argument("--packing", action="store_true", default=False)
     parser.add_argument("-t", "--token", type=str, default=None)
@@ -201,6 +202,8 @@ if __name__ == "__main__":
 
     print_trainable_parameters(model)
 
+    if args.refer_data_source is not None:
+        args.model_name = args.refer_data_source
     if args.model_name == "/mnt/data0/fuwenjie/MIA-LLMs/cache/models--decapoda-research--llama-7b-hf/snapshots/5f98eefcc80e437ef68d457ad7bf167c2c6a1348":
         args.model_name = "decapoda-research/llama-7b-hf"
     with accelerator.main_process_first():
