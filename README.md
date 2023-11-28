@@ -1,5 +1,9 @@
 # Practical Membership Inference Attacks against Fine-tuned Large Language Models via Self-prompt Calibration
 
+- [Requirements](#requirements)
+- [Target Model Fine-tuning](#target-model-fine-tuning)
+- [Self-prompt Reference Model Fine-tuning](#self-prompt-reference-model-fine-tuning)
+- [Run SPV-MIA](#run-spv-mia)
 
 This is the official implementation of the paper "Practical Membership Inference Attacks against Fine-tuned 
 Large Language Models via Self-prompt Calibration".
