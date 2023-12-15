@@ -53,14 +53,14 @@ Please replace \*pretrained_model_name\* and \*dataset_name\* with the names of 
 - Falcon (https://huggingface.co/tiiuae/falcon-7b)
 - LLaMA (https://huggingface.co/decapoda-research/llama-7b-hf)[^1]
 
-[^1] This repo third-party repository `decapoda-research/llama-7b-hf` seems to be deleted by unknown reasons, maybe try [luodian/llama-7b-hf](https://huggingface.co/luodian/llama-7b-hf) 
+[^1]: This repo third-party repository `decapoda-research/llama-7b-hf` seems to be deleted by unknown reasons, maybe try [luodian/llama-7b-hf](https://huggingface.co/luodian/llama-7b-hf) 
 and [baffo32/decapoda-research-llama-7B-hf](https://huggingface.co/baffo32/decapoda-research-llama-7B-hf) as alternatives.
 ### Recommended datasets
 - Ag News (https://huggingface.co/datasets/ag_news)
 - Wikitext-103 (https://huggingface.co/datasets/wikitext)[^2]
 - Xsum (https://huggingface.co/datasets/xsum)
 
-[^2] Please add an additional argument `--dataset_config_name wikitext-2-raw-v1` to specify this dataset.
+[^2]: Please add an additional argument `--dataset_config_name wikitext-2-raw-v1` to specify this dataset.
 ## Self-prompt Reference Model Fine-tuning
   Before fine-tuning the self-prompt reference model, the reference dataset can be sampled via our proposed 
   self-prompt approach over the fine-tuned LLM. 
