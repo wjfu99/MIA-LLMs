@@ -42,9 +42,12 @@ if __name__ == "__main__":
     parser.add_argument("--split_model", action="store_true", default=False)
     parser.add_argument("--block_size", type=int, default=1024)
     parser.add_argument("--preprocessing_num_workers", type=int, default=1)
+    parser.add_argument("--peft", type=str, default="lora")
     parser.add_argument("--lora_rank", type=int, default=64)
     parser.add_argument("--lora_alpha", type=int, default=16)
     parser.add_argument("--lora_dropout", type=float, default=0.1)
+    parser.add_argument("--p_tokens", type=int, help="The number of virtual tokens for prefix-tuning or p-tuning", default=20)
+    parser.add_argument("--p_hidden", type=int, help="The hidden size of the prompt encoder", default=128)
 
     parser.add_argument("-lr", "--learning_rate", type=float, default=1e-4)
     parser.add_argument("--lr_scheduler_type", type=str, default="linear")
@@ -69,7 +72,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--use_int4", action="store_true", default=False)
     parser.add_argument("--use_int8", action="store_true", default=False)
-    parser.add_argument("--disable_lora", action="store_true", default=False)
+    parser.add_argument("--disable_peft", action="store_true", default=False)
     parser.add_argument("--disable_flash_attention", action="store_true", help="Disable flash attention", default=False)
 
     parser.add_argument("--pad_token_id", default=None, type=int, help="The end of sequence token.")
@@ -157,18 +160,32 @@ if __name__ == "__main__":
         bnb_config = None
         optimizer = "adamw_torch"
 
-    peft_config = LoraConfig(
-        task_type=TaskType.CAUSAL_LM, inference_mode=False, r=args.lora_rank, lora_alpha=args.lora_alpha,
-        lora_dropout=args.lora_dropout
-    )
-    # peft_config = PrefixTuningConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, num_virtual_tokens=20, encoder_hidden_size=128)
-    # peft_config = PromptEncoderConfig(task_type=TaskType.CAUSAL_LM, num_virtual_tokens=20, encoder_hidden_size=128)
-    # peft_config = IA3Config(
-    #     peft_type="IA3",
-    #     task_type=TaskType.CAUSAL_LM,
-    #     target_modules=["k_proj", "v_proj", "down_proj"],
-    #     feedforward_modules=["down_proj"],
-    # )
+    if args.peft == "lora":
+        peft_config = LoraConfig(
+            task_type=TaskType.CAUSAL_LM,
+            inference_mode=False,
+            r=args.lora_rank,
+            lora_alpha=args.lora_alpha,
+            lora_dropout=args.lora_dropout
+        )
+    elif args.peft == "prefix-tuing":
+        peft_config = PrefixTuningConfig(
+            task_type=TaskType.CAUSAL_LM,
+            inference_mode=False,
+            num_virtual_tokens=args.p_tokens,
+            encoder_hidden_size=args.p_hidden)
+    elif args.peft == "p-tuing":
+        peft_config = PromptEncoderConfig(
+            task_type=TaskType.CAUSAL_LM,
+            num_virtual_tokens=args.p_tokens,
+            encoder_hidden_size=args.p_hidden)
+    elif args.peft == "ia3":
+        peft_config = IA3Config(
+            peft_type="IA3",
+            task_type=TaskType.CAUSAL_LM,
+            target_modules=["k_proj", "v_proj", "down_proj"],
+            feedforward_modules=["down_proj"],
+        )
 
     torch_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
     model = AutoModelForCausalLM.from_pretrained(args.model_name, token=access_token, quantization_config=bnb_config,
@@ -181,14 +198,13 @@ if __name__ == "__main__":
         assert model.model.layers[
                    0].self_attn.forward.__doc__ == llama_forward_with_flash_attn.__doc__, "Model is not using flash attention"
 
-    if not args.disable_lora:
-        logger.info("Using LORA...")
+    if not args.disable_peft:
+        logger.info("Using PEFT...")
         if args.use_int4 or args.use_int8:
             logger.info("Preparing model for kbit training...")
             model = prepare_model_for_kbit_training(model)
             if use_flash_attention:
                 from ft_llms.llama_patch import upcast_layer_for_flash_attention
-
                 logger.info("Upcasting flash attention layers...")
                 model = upcast_layer_for_flash_attention(model, torch_dtype)
         logger.info("Getting PEFT model...")
