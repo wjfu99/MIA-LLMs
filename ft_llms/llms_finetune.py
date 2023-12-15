@@ -24,7 +24,7 @@ os.environ['HTTPS_PROXY'] = 'http://fuwenjie:19990621f@192.168.75.13:7890'
 
 from utils import get_logger, constantlengthdatasetiter, print_trainable_parameters
 # trl.trainer.ConstantLengthDataset.__dict__["__iter__"] = constantlengthdatasetiter
-setattr(trl.trainer.ConstantLengthDataset, "__iter__", constantlengthdatasetiter)
+# setattr(trl.trainer.ConstantLengthDataset, "__iter__", constantlengthdatasetiter)
 
 logger = get_logger("finetune", "info")
 
@@ -78,8 +78,7 @@ if __name__ == "__main__":
     parser.add_argument("--pad_token_id", default=None, type=int, help="The end of sequence token.")
     parser.add_argument("--add_eos_token", action="store_true", help="Add EOS token to tokenizer", default=False)
     parser.add_argument("--add_bos_token", action="store_true", help="Add BOS token to tokenizer", default=False)
-    parser.add_argument("--validation_split_percentage", default=0.1,
-                        help="The percentage of the train set used as validation set in case there's no validation split")
+    parser.add_argument("--validation_split_percentage", default=0.1, help="The percentage of the train set used as validation set in case there's no validation split")
     args = parser.parse_args()
 
     accelerator = Accelerator()

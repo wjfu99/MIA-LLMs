@@ -45,8 +45,22 @@ pip install -r requirements.txt
   --train_sta_idx=0 --train_end_idx=10000 --eval_sta_idx=0 --eval_end_idx=1000
   ```
 
-Please replace \*pretrained_model_name\* and \*dataset_name\* with the names of pretrained LLM and training dataset.
+Please replace \*pretrained_model_name\* and \*dataset_name\* with the names of pretrained LLM and training dataset, such as `decapoda-research/llama-7b-hf` and `ag_news`.
 
+### Recommended pretrained models
+- GPT-2 (https://huggingface.co/gpt2)
+- GPT-J (https://huggingface.co/EleutherAI/gpt-j-6b)
+- Falcon (https://huggingface.co/tiiuae/falcon-7b)
+- LLaMA (https://huggingface.co/decapoda-research/llama-7b-hf)[^1]
+
+[^1] This repo third-party repository `decapoda-research/llama-7b-hf` seems to be deleted by unknown reasons, maybe try [luodian/llama-7b-hf](https://huggingface.co/luodian/llama-7b-hf) 
+and [baffo32/decapoda-research-llama-7B-hf](https://huggingface.co/baffo32/decapoda-research-llama-7B-hf) as alternatives.
+### Recommended datasets
+- Ag News (https://huggingface.co/datasets/ag_news)
+- Wikitext-103 (https://huggingface.co/datasets/wikitext)[^2]
+- Xsum (https://huggingface.co/datasets/xsum)
+
+[^2] Please add an additional argument `--dataset_config_name wikitext-2-raw-v1` to specify this dataset.
 ## Self-prompt Reference Model Fine-tuning
   Before fine-tuning the self-prompt reference model, the reference dataset can be sampled via our proposed 
   self-prompt approach over the fine-tuned LLM. 
