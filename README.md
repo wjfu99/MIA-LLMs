@@ -53,8 +53,8 @@ Please replace \*pretrained_model_name\* and \*dataset_name\* with the names of 
 - Falcon (https://huggingface.co/tiiuae/falcon-7b)
 - LLaMA (https://huggingface.co/decapoda-research/llama-7b-hf) [^1]
 
-[^1]: This repo third-party repository `decapoda-research/llama-7b-hf` seems to be deleted by unknown reasons, maybe try [luodian/llama-7b-hf](https://huggingface.co/luodian/llama-7b-hf) 
-and [baffo32/decapoda-research-llama-7B-hf](https://huggingface.co/baffo32/decapoda-research-llama-7B-hf) as alternatives.
+[^1]: This third-party repository `decapoda-research/llama-7b-hf` seems to be deleted by unknown reasons, using [luodian/llama-7b-hf](https://huggingface.co/luodian/llama-7b-hf) 
+or [baffo32/decapoda-research-llama-7B-hf](https://huggingface.co/baffo32/decapoda-research-llama-7B-hf) as alternatives.
 ### Recommended datasets
 - Ag News (https://huggingface.co/datasets/ag_news)
 - Wikitext-103 (https://huggingface.co/datasets/wikitext) [^2]
@@ -81,6 +81,7 @@ accelerate launch ./ft_llms/llms_finetune.py --refer \
 -e 2 -b 4 -lr 5e-5 --gradient_accumulation_steps 1 \
 --train_sta_idx=0 --train_end_idx=10000 --eval_sta_idx=0 --eval_end_idx=1000
 ```
+
 
 ## Run SPV-MIA
 After accomplishing the preliminary operations, here is the command for deploying SPV-MIA on the target model.
