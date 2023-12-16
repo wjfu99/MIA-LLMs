@@ -83,8 +83,6 @@ class AttackModel:
         ori_losses = []
         ref_ori_losses = []
         ori_dataset = deepcopy(dataset)
-        # TODO: the argument calibration is not work.
-        strength = np.linspace(cfg['start_strength'], cfg['end_strength'], cfg['perturbation_number'])
         for i in tqdm(range(0, cfg["perturbation_number"])):
             idx_rate = i / cfg["perturbation_number"] * 0.7
             ori_loss, ref_ori_loss, ori_token_len = self.llm_eval(model, ori_dataset, cfg, idx_rate, refer_model=self.reference_model)
@@ -172,12 +170,6 @@ class AttackModel:
         # mem_info = info_dict.mem_feat
         # ref_mem_info = info_dict.ref_mem_feat
         if cfg["calibration"]:
-            mem_feat = info_dict.mem_feat.var_losses / np.expand_dims(info_dict.mem_feat.ori_losses, -2)\
-                       - info_dict.ref_mem_feat.ref_var_losses / np.expand_dims(info_dict.ref_mem_feat.ref_ori_losses, -2)
-            nonmem_feat = info_dict.nonmem_feat.var_losses / np.expand_dims(info_dict.nonmem_feat.ori_losses, -2)\
-                       - info_dict.ref_nonmem_feat.ref_var_losses / np.expand_dims(info_dict.ref_nonmem_feat.ref_ori_losses, -2)
-            # gen_feat = info_dict.gen_feat.var_losses / info_dict.gen_feat.ori_losses[:, :, None] \
-            #               - info_dict.ref_gen_feat.ref_var_losses / info_dict.ref_gen_feat.ref_ori_losses[:, :, None]
             get_prob = lambda logprob: np.power(np.e, -logprob)
             mem_feat = ((get_prob(info_dict.mem_feat.per_losses).mean((-1, -2)) - get_prob(info_dict.mem_feat.ori_losses).mean(-1)) -
                         (get_prob(info_dict.ref_mem_feat.ref_per_losses).mean((-1, -2)) - get_prob(info_dict.ref_mem_feat.ref_ori_losses).mean(-1)))
@@ -186,11 +178,7 @@ class AttackModel:
         else:
             mem_feat = info_dict.mem_feat.var_losses / info_dict.mem_feat.ori_losses
             nonmem_feat = info_dict.nonmem_feat.var_losses / info_dict.nonmem_feat.ori_losses
-            # gen_feat = info_dict.gen_feat.var_losses / info_dict.gen_feat.ori_losses[:, :, None]
-        # if cfg["target_model"] == "diffusion":
-        #     mem_feat = mem_feat[:, 2, :]
-        #     nonmem_feat = nonmem_feat[:, 2, :]
-            # gen_feat = gen_feat[:, 2, :]
+
 
         if cfg["attack_kind"] == "stat":
             # mem_feat = mem_feat[:, :, 0]
@@ -198,45 +186,20 @@ class AttackModel:
             # mem_feat[np.isnan(mem_feat)] = 0
             # nonmem_feat[np.isnan(nonmem_feat)] = 0
             feat = - np.concatenate([mem_feat, nonmem_feat])
-            feat = - np.concatenate(
-                [info_dict.mem_feat.ori_losses.mean(-1) - info_dict.ref_mem_feat.ref_ori_losses.mean(-1),
-                 info_dict.nonmem_feat.ori_losses.mean(-1) - info_dict.ref_nonmem_feat.ref_ori_losses.mean(-1)])
             ground_truth = np.concatenate([np.zeros(mem_feat.shape[0]), np.ones(nonmem_feat.shape[0])]).astype(int)
 
-        elif cfg["attack_kind"] == "nn":
-            # mem_freq = self.frequency(mem_feat, split=100)
-            # nonmem_freq = self.frequency(nonmem_feat, split=100)
-            # mem_feat, nonmem_feat = utils.ndarray_to_tensor(mem_freq, nonmem_freq)
-            mem_feat, nonmem_feat = utils.ndarray_to_tensor(mem_feat, nonmem_feat)
-            if cfg["target_model"] == "vae":
-                mem_feat.sort(axis=1)
-                nonmem_feat.sort(axis=1)
-            feat = torch.cat([mem_feat, nonmem_feat])
-            feat[torch.isnan(feat)] = 0
-            # if cfg["target_model"] == "diffusion":
-            feat = feat.unsqueeze(1)
-            ground_truth = torch.cat([torch.zeros(mem_feat.shape[0]), torch.ones(nonmem_feat.shape[0])]).type(torch.LongTensor).cuda()
         return feat, ground_truth
 
     def conduct_attack(self, cfg):
         save_path = os.path.join(PATH, cfg["attack_data_path"], f"attack_data_{cfg['model_name']}@{cfg['dataset_name']}",
                                  f"roc_{cfg['attack_kind']}.npz")
-        if cfg["attack_kind"] == 'nn':
-            if not self.is_model_training:
-                self.attack_model_training(cfg)
-            attack_model = self.attack_model
-            raw_info = self.data_prepare("target", cfg)
-            feat, ground_truth = self.feat_prepare(raw_info, cfg)
-            predict = attack_model(feat)
-            # predict, ground_truth = utils.tensor_to_ndarray(predict, ground_truth)
-            self.eval_attack(ground_truth, predict[:, 1], path=save_path)
-        elif cfg["attack_kind"] == 'stat':
-            raw_info = self.data_prepare("target", cfg)
-            feat, ground_truth = self.feat_prepare(raw_info, cfg)
-            # self.distinguishability_plot(raw_info['mem_feat']['ori_losses'].mean(-1),
-            #                              raw_info['nonmem_feat']['ori_losses'].mean(-1))
-            # self.distinguishability_plot(feat[:1000], feat[-1000:])
-            self.eval_attack(ground_truth, -feat, path=save_path)
+
+        raw_info = self.data_prepare("target", cfg)
+        feat, ground_truth = self.feat_prepare(raw_info, cfg)
+        # self.distinguishability_plot(raw_info['mem_feat']['ori_losses'].mean(-1),
+        #                              raw_info['nonmem_feat']['ori_losses'].mean(-1))
+        # self.distinguishability_plot(feat[:1000], feat[-1000:])
+        self.eval_attack(ground_truth, -feat, path=save_path)
 
     def tokenize_and_mask(self, text, span_length, pct, idx_rate, ceil_pct=False):
         cfg = self.cfg
@@ -274,11 +237,6 @@ class AttackModel:
         return [len([x for x in text.split() if x.startswith("<extra_id_")]) for text in texts]
 
     def replace_masks(self, texts):
-        """
-        predict mask tokens with the mask model.
-        :param texts:
-        :return:
-        """
         cfg = self.cfg
         n_expected = self.count_masks(texts)
         stop_id = self.mask_tokenizer.encode(f"<extra_id_{max(n_expected)}>")[0]
@@ -367,38 +325,3 @@ class AttackModel:
             plt.plot([0, 1], [0, 1], linestyle='--')
             # show the plot
             plt.show()
-
-    @staticmethod
-    def distinguishability_plot(mem, non_mem):
-        sns.set_theme()
-        mem_color = "indianred"
-        non_mem_color = "forestgreen"
-        sns.kdeplot(mem, fill=True, color=mem_color, alpha=0.5)
-        sns.kdeplot(non_mem, fill=True, color=non_mem_color, alpha=0.5)
-
-        mem_mean = round(mem.mean(), 2)
-        mem_std = round(mem.std(), 2)
-        non_mem_mean = round(non_mem.mean(), 2)
-        non_mem_std = round(non_mem.std(), 2)
-
-        # plt.xlabel(r"${\mathcal{F}}({x}, \theta)$", fontsize=22, labelpad=10)
-        plt.xlabel(r"$\Delta \widehat{p}_{\theta}$", fontsize=22, labelpad=10)
-        plt.ylabel('Density', fontsize=22, labelpad=10)
-        plt.legend(['Member', 'Non-member'], fontsize=20, loc='upper right')
-        # plt.xlim([-0.6, 0.9])
-        mem_text = '\n'.join((
-                    r'$\mu_{Mem}=%.2f$' % (mem_mean, ),
-                    r'$\sigma_{Mem}=%.2f$' % (mem_std, )))
-        non_mem_text = '\n'.join((
-                    r'$\mu_{Non}=%.2f$' % (non_mem_mean, ),
-                    r'$\sigma_{Non}=%.2f$' % (non_mem_std, )))
-        mem_props = dict(boxstyle='round', facecolor=mem_color, alpha=0.15, edgecolor='black')
-        non_mem_props = dict(boxstyle='round', facecolor=non_mem_color, alpha=0.15, edgecolor='black')
-
-        plt.tick_params(labelsize=16)
-        # plt.text(0.63, 0.25, mem_text, transform=plt.gca().transAxes, fontsize=22, bbox=mem_props)
-        # plt.text(0.04, 0.6, non_mem_text, transform=plt.gca().transAxes, fontsize=22, bbox=non_mem_props)
-
-        plt.tight_layout()
-        # plt.savefig("distinguishability-diffusion-our.pdf", format="pdf", bbox_inches="tight")
-        plt.show()

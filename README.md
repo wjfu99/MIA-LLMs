@@ -53,7 +53,7 @@ Please replace \*pretrained_model_name\* and \*dataset_name\* with the names of 
 - Falcon (https://huggingface.co/tiiuae/falcon-7b)
 - LLaMA (https://huggingface.co/decapoda-research/llama-7b-hf) [^1]
 
-[^1]: This third-party repository `decapoda-research/llama-7b-hf` seems to be deleted by unknown reasons, using [luodian/llama-7b-hf](https://huggingface.co/luodian/llama-7b-hf) 
+[^1]: This third-party repo `decapoda-research/llama-7b-hf` seems to be deleted by unknown reasons, using forked repos [luodian/llama-7b-hf](https://huggingface.co/luodian/llama-7b-hf) 
 or [baffo32/decapoda-research-llama-7B-hf](https://huggingface.co/baffo32/decapoda-research-llama-7B-hf) as alternatives.
 ### Recommended datasets
 - Ag News (https://huggingface.co/datasets/ag_news)

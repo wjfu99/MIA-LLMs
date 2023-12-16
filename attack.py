@@ -39,13 +39,6 @@ logging.basicConfig(
 # Load abs path
 PATH = os.path.dirname(os.path.abspath(__file__))
 
-# Automatically select the freest GPU.
-# os.system('nvidia-smi -q -d Memory |grep -A5 GPU|grep Free >tmp')
-# memory_available = [int(x.split()[2]) for x in open('tmp', 'r').readlines()]
-# os.environ["CUDA_VISIBLE_DEVICES"] = str(np.argmax(memory_available))
-# device = "cuda" + ":" + str(np.argmax(memory_available))
-# torch.cuda.set_device(device)
-
 # Fix the random seed
 seed = 0
 torch.manual_seed(seed)
@@ -100,14 +93,13 @@ if not cfg["load_attack_data"]:
     valid_dataset = Dataset.from_dict(valid_dataset[cfg.eval_sta_idx:cfg.eval_end_idx])
     train_dataset = Dataset.from_dict(train_dataset[random.sample(range(len(train_dataset["text"])), cfg["maximum_samples"])])
     valid_dataset = Dataset.from_dict(valid_dataset[random.sample(range(len(valid_dataset["text"])), cfg["maximum_samples"])])
-    # Dataset.from_dict(all_dataset[random.sample(range(0, 30000), cfg["sample_number"])]),
-    # Dataset.from_dict(all_dataset[random.sample(range(30000, 35000), cfg["sample_number"])])
     logger.info("Successfully load datasets!")
 
     # Prepare dataloade
     train_dataloader = DataLoader(train_dataset, batch_size=cfg["eval_batch_size"])
     eval_dataloader = DataLoader(valid_dataset, batch_size=cfg["eval_batch_size"])
 
+    # Load Mask-f
     shadow_model = None
     int8_kwargs = {}
     half_kwargs = {}
@@ -138,60 +130,12 @@ else:
     tokenizer = None
     mask_tokenizer = None
 
-"""
-losses = []
-losses_ref = []
-for step, batch in tqdm(enumerate(eval_dataloader)):
-    with torch.no_grad():
-        outputs = target_model(**batch)
-        outputs_ref = reference_model(**batch)
-
-    loss = outputs.loss
-    losses.append(accelerator.gather(loss.reshape(-1, 1)))
-    loss_ref = outputs_ref.loss
-    losses_ref.append(accelerator.gather(loss_ref.reshape(-1, 1)))
-losses = torch.cat(losses, dim=0)
-losses_ref = torch.cat(losses_ref, dim=0)
-sorted_ratio = sorted([l-l_ref for l,l_ref in zip (losses,losses_ref)])
-threshold_ref = sorted_ratio[int(0.1*len(sorted_ratio))]
-
-
-losses = []
-losses_ref = []
-for step, batch in enumerate(train_dataloader):
-    with torch.no_grad():
-        outputs = target_model(**batch)
-
-    loss = outputs.loss
-
-    losses.append(accelerator.gather(loss.reshape(-1, 1)))
-    with torch.no_grad():
-        outputs_ref = reference_model(**batch)
-    loss_ref = outputs_ref.loss
-    losses_ref.append(accelerator.gather(loss_ref.reshape(-1, 1)))
-
-accelerator.wait_for_everyone()
-losses = torch.cat(losses, dim=0)
-
-losses_ref = torch.cat(losses_ref, dim=0)
-lr_rat = [l - l_r for l, l_r in zip(losses, losses_ref)]
-guess_cor_ref = sum([1 for sample in lr_rat if sample < threshold_ref])
-print("correct cnt  ref is: ", guess_cor_ref, "all is: ", len(losses), "ratio is: ", guess_cor_ref/len(losses))
-"""
 
 datasets = {
     "target": {
         "train": train_dataloader,
         "valid": eval_dataloader
-    },
-    # "shadow": {
-    #     "train": Dataset.from_dict(all_dataset[random.sample(range(35000, 65000), cfg["sample_number"])]),
-    #     "valid": Dataset.from_dict(all_dataset[random.sample(range(65000, 70000), cfg["sample_number"])])
-    # },
-    # "reference": {
-    #     "train": Dataset.from_dict(all_dataset[random.sample(range(70000, 100000), cfg["sample_number"])]),
-    #     "valid": Dataset.from_dict(all_dataset[random.sample(range(100000, 105000), cfg["sample_number"])])
-    # }
+    }
 }
 
 
