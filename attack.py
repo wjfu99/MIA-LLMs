@@ -19,9 +19,6 @@ import trl
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2SeqLM, BitsAndBytesConfig, TrainingArguments, AutoConfig, LlamaTokenizer
 from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training
 
-os.environ['HTTP_PROXY'] = 'http://fuwenjie:19990621f@localhost:7890'
-os.environ['HTTPS_PROXY'] = 'http://fuwenjie:19990621f@localhost:7890'
-
 # Load config file
 with open("configs/config.yaml", 'r') as f:
     cfg = yaml.safe_load(f)
